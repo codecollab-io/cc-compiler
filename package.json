@@ -3,6 +3,7 @@
   "version": "3.0.2",
   "description": "Multi-language code compiler for untrusted code.",
   "main": "index.js",
+  "types": "./types/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

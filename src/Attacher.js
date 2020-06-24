@@ -45,6 +45,7 @@ Attacher.prototype.attach = function () {
 
         // Bind this.process to the docker container process.
         this.process = exec(`docker attach '${this.opts.containerName}'`);
+        this.emit("attached");
 
         /**
          * Compilation variables
