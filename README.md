@@ -116,11 +116,11 @@ attacher.stop();                    // Stops the compiler
 `attacher.stop()` Stops compilation.
 
 ### Events
-Both the Compiler and Attach can emit 3 events
-    * `error` emitted whenever the compiler encountered an error.
-    * `inc` emitted whenever the running program outputs anything to STDOUT or STDERR.
-    * `done` emitted when the program is finished running or it has timed out.
+Both the Compiler and Attach can emit 3 events.
+* `error` emitted whenever the compiler encountered an error.
+* `inc` emitted whenever the running program outputs anything to STDOUT or STDERR.
+* `done` emitted when the program is finished running or it has timed out.
 
 The Compiler also has an additional event
-    * `launched` emitted when the program has launched successfully.
+* `launched` emitted when the program has launched successfully.
 
