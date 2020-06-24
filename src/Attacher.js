@@ -67,7 +67,7 @@ Attacher.prototype.attach = function () {
                     fs.open(this.opts.pathToFiles + "/completed", "r", (err, fd) => {
 
                         // completed failed to open, meaning it was not created and compilation was actually stopped elsewhere.
-                        if (err) { return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: count, timedOut: true }); }
+                        if (err) { return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: "", timedOut: true }); }
 
                         fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
 
@@ -163,8 +163,7 @@ Attacher.prototype.stop = function () {
 		// Kill process and clear intervals.
 		this.process.kill();
 
-		const cmd = `./scripts/stop.sh ${this.opts.containerName}`;
-		exec(cmd);
+		exec(`docker rm -f ${this.opts.containerName}`);
 
 		clearInterval(this.interval);
 	}

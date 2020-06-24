@@ -86,6 +86,8 @@ anyFolderName
          ...
 ```
 
+Note that within the folder "anyFolderName" there is another folder named "code" that contains all the code to be run.
+
 So when specifying a directory to `options.pathToFiles`, you should enter:
 ```Javascript
 ...
@@ -124,3 +126,58 @@ Both the Compiler and Attach can emit 3 events.
 The Compiler also has an additional event
 * `launched` emitted when the program has launched successfully.
 
+## Example
+This example runs code stored in /Users/carlvoller/test/code using Python 3.7. The compiler is listening for a "launched" event in which afterwards, it will attach the attacher to the compiler. The attacher then listens for "inc" and "done" events for program output and errors as well as for when compilation finishes. It then prints all output to the console.
+```Javascript
+const Compiler = require("../index").Compiler;
+const Attacher = require("../index").Attacher;
+
+// Initialise Compiler
+let comp = new Compiler({
+    timeOut: 60,
+    langNum: 0,
+    mainFile: "main.py",
+    pathToFiles: "/Users/carlvoller/test",
+    containerName: "Test1"
+});
+
+// Initialise Attacher
+let attach = new Attacher({
+    pathToFiles: "/Users/carlvoller/test",
+    containerName: "Test1"
+});
+
+comp.exec(); // Start Compiler
+
+// Listen for events
+comp.on("launched", () => {
+    console.log("Compiler has been launched.");
+
+    // Attach the attacher
+    attach.attach();
+});
+
+// Listen for data coming out from the program's STDOUT and STDERR streams
+attach.on("inc", (inc) => {
+    let output = inc.out,
+        errors = inc.err;
+    console.log(`"Program output: ${output}`);
+    console.log(`"Program errored: ${errors}`);
+});
+
+// Listen for when the program finishes running OR timed out
+attach.on("done", (done) => {
+    let output   = done.out,
+        errors   = done.err,
+        time     = done.time,
+        timedOut = done.timedOut;   // Did the program time out. (Took > options.timeOut time to compile)
+    console.log(`"Program output: ${output}`);
+    console.log(`"Program errored: ${errors}`);
+    console.log(`"Program took ${time} to run.`);
+    console.log(`"Program time out status: ${timedOut}`);
+});
+
+// Listen for any errors during initialisation
+comp.on("error", (err) => console.log("An error occurred: ", err));
+attach.on("error", (err) => console.log("An error occurred: ", err));
+```

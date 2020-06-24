@@ -86,16 +86,16 @@ Compiler.prototype.exec = function () {
 				fs.open(this.opts.pathToFiles + "/completed", "r", (err, fd) => {
 
 					// completed failed to open, meaning it was not created and compilation actually didn't finish.
-					if (err) { return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: count, timedOut: true }); }
+					if (err) { this._cleanUp(); return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: count, timedOut: true }); }
 
 					if (fd) {
 						fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-							if (err) { return this.emit("error", err); }
+							if (err) { this._cleanUp(); return this.emit("error", err); }
 							if (count < this.opts.timeOut) {
 
 								// Compilation didn't time out, check for new errors
 								fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-									if (err || !fd) { return this.emit("error", err); }
+									if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
 									fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
 
 										// Convert Buffers to Strings, return result in done event.
@@ -103,6 +103,7 @@ Compiler.prototype.exec = function () {
 										let time = `${Math.round(count * 10) / 10}\n`;
 										try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
 										let errors = b2.toString("utf8", 0, l2);
+										this._cleanUp();
 										return this.emit("done", { err: errors, out: out, time: time, timedOut: false });
 									});
 								});
@@ -112,13 +113,13 @@ Compiler.prototype.exec = function () {
 								fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
 
 									// If an error occurred when reading logfile.txt, means the file is probably too big to be read or simply can't be read.
-									if (err) { console.error(err); return this.emit("error", "Output was too large to be read."); }
+									if (err) { console.error(err); this._cleanUp(); return this.emit("error", "Output was too large to be read."); }
 
 									fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
 
 										// Check error files for any additional errors.
 										fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-											if (err || !fd) { return this.emit("error", err); }
+											if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
 											fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
 
 												// Convert Buffers to Strings, return result in done event.
@@ -127,6 +128,7 @@ Compiler.prototype.exec = function () {
 												try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
 												let errors = b2.toString("utf8", 0, l2);
 												errors += "\nExecution Timed Out.\nAny changes made was not saved.\n";
+												this._cleanUp();
 												return this.emit("done", { err: errors, out: out, time: time, timedOut: true });
 											});
 										});
@@ -140,13 +142,13 @@ Compiler.prototype.exec = function () {
 						fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
 
 							// If an error occurred when reading logfile.txt, means the file is probably too big to be read or simply can't be read.
-							if (err) { console.error(err); return this.emit("error", "Output was too large to be read."); }
+							if (err) { console.error(err); this._cleanUp(); return this.emit("error", "Output was too large to be read."); }
 
 							fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
 
 								// Check error files for any additional errors.
 								fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-									if (err || !fd) { return this.emit("error", err); }
+									if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
 									fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
 
 										// Convert Buffers to Strings, return result in done event.
@@ -155,6 +157,7 @@ Compiler.prototype.exec = function () {
 										try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
 										let errors = b2.toString("utf8", 0, l2);
 										errors += "\nExecution Timed Out.\nAny changes made was not saved.\n";
+										this._cleanUp();
 										return this.emit("done", { err: errors, out: out, time: time, timedOut: true });
 									});
 								});
@@ -239,9 +242,24 @@ Compiler.prototype.stop = function () {
 		// Kill process and clear intervals.
 		this.process.kill();
 
-		const cmd = `./scripts/stop.sh ${this.opts.containerName}`;
-		exec(cmd);
+		exec(`docker rm -f ${this.opts.containerName}`);
 		
 		clearInterval(this.interval);
 	}
+}
+
+/**
+ * Cleans up after compilation ends.
+ */
+Compiler.prototype._cleanUp = function() {
+	// Wait 200ms so any attached clients have time to detect the stop.
+	setTimeout(() => {
+		try {
+			fs.unlinkSync(`${this.opts.pathToFiles}/completed`);
+			fs.unlinkSync(`${this.opts.pathToFiles}/logfile.txt`);
+			fs.unlinkSync(`${this.opts.pathToFiles}/time`);
+			fs.unlinkSync(`${this.opts.pathToFiles}/errors`);
+			fs.unlinkSync(`${this.opts.pathToFiles}/script.sh`);
+		} catch(e) { }
+	}, 200);
 }
