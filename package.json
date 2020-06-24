@@ -1,0 +1,14 @@
+{
+  "name": "cc-compiler",
+  "version": "1.0.0",
+  "description": "CodeCollab Compiler",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Carl Ian Voller",
+  "license": "MIT",
+  "dependencies": {
+    "@rauschma/stringio": "^1.4.0"
+  }
+}
