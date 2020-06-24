@@ -1,13 +1,21 @@
 {
-  "name": "cc-compiler",
-  "version": "1.0.0",
-  "description": "CodeCollab Compiler",
+  "name": "@portatolova/cc-compiler",
+  "version": "3.0.0",
+  "description": "Multi-language code compiler for untrusted code.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codecollab-io/cc-compiler.git"
+  },
   "author": "Carl Ian Voller",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/codecollab-io/cc-compiler/issues"
+  },
+  "homepage": "https://github.com/codecollab-io/cc-compiler#readme",
   "dependencies": {
     "@rauschma/stringio": "^1.4.0"
   }
