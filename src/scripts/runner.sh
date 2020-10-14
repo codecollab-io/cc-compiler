@@ -16,7 +16,7 @@ exiting() {
 
 trap exiting SIGINT SIGTERM
 
-code=$(gtimeout "$to" docker wait "$name" || true)
+code=$(timeout "$to" docker wait "$name" || true)
 docker kill $name &> /dev/null
 echo -n 'status: '
 if [ -z "$code" ]; then
