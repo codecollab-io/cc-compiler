@@ -32,10 +32,10 @@ declare class Compiler extends EventEmitter {
 
     _cleanUp(): void;
 
-    on(event: 'launched', callback: () => void): void;
-    on(event: 'inc', callback: (data: { out: string; err: string }) => void): void;
-    on(event: 'done', callback: (data: { out: string; err: string, time: string, timedOut: boolean }) => void): void;
-    on(event: 'error', callback: (err: any) => void): void;
+    on(event: 'launched', callback: () => void): this;
+    on(event: 'inc', callback: (data: { out: string; err: string }) => void): this;
+    on(event: 'done', callback: (data: { out: string; err: string, time: string, timedOut: boolean }) => void): this;
+    on(event: 'error', callback: (err: any) => void): this;
 
 }
 
@@ -51,8 +51,8 @@ declare class Attacher extends EventEmitter {
 
     stop(): void;
 
-    on(event: 'attached', callback: () => void): void;
-    on(event: 'inc', callback: (data: { out: string; err: string }) => void): void;
-    on(event: 'done', callback: (data: { out: string; err: string, time: string, timedOut: boolean }) => void): void;
-    on(event: 'error', callback: (err: any) => void): void;
+    on(event: 'attached', callback: () => void): this;
+    on(event: 'inc', callback: (data: { out: string; err: string }) => void): this;
+    on(event: 'done', callback: (data: { out: string; err: string, time: string, timedOut: boolean }) => void): this;
+    on(event: 'error', callback: (err: any) => void): this;
 }
