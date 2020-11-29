@@ -53,88 +53,80 @@ Attacher.prototype.attach = function () {
          * @param {Number} dataLen / @param {Number} errLen - Length of already read data from output files.
          * @param {Boolean} isReadingInc - If program is in the process of reading the output files.
          */
-        let isCompleted = false;
+
         let [dataLen, errLen] = [0, 0];
-        let isReadingInc = false;
+        let isReadingInc = false,
+            isReadingErr = false;
 
-        this.checkInterval = setInterval(() => {
-
-            // Checks each interval if container is still running
+        this.checkStatus = setInterval(() => {
+            // Check if docker container is still running
             exec(`docker ps | grep ${this.opts.containerName}`, (err, out) => {
-                if (out === "") {
-                    if (isCompleted) { return; }
-                    isCompleted = true;
-                    clearInterval(this.checkInterval);
-                    fs.open(this.opts.pathToFiles + "/completed", "r", (err, fd) => {
 
-                        // completed failed to open, meaning it was not created and compilation was actually stopped elsewhere.
-                        if (err) { return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: "", timedOut: true }); }
-
-                        fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-
-                            // Check error file for errors.
-                            fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-
-                                // Ignore errors and try again at the next interval.
-                                if (err || !fd) { return this.emit("error", err); }
-
-                                fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-                                    // Convert Buffers to Strings, return result in done event.
-                                    let out = b1.toString("utf8", 0, l1);
-                                    let time = ``;
-                                    try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
-                                    let errors = b2.toString("utf8", 0, l2);
-                                    return this.emit("done", { err: errors, out: out, time: time, timedOut: false });
-
-                                });
-                            });
-                        });
-
-                    });
-                } else {
-                    // Compilation is not finished and neither has it timed out yet.
-                    // logfile.txt is read per interval for any new changes. If there are any, Compiler will emit an "inc" event.
-
-                    if (isReadingInc) { return; }
-
-                    // Set isReadingInc = true so files wouldn't be read multiples times at once.
-                    isReadingInc = true;
-
-                    fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
-
-                        // Ignore errors and try again at the next interval.
-                        if (err || !fd) { return isReadingInc = false; }
-
-                        fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-
-                            // Check error file for errors.
-                            fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-
-                                // Ignore errors and try again at the next interval.
-                                if (err || !fd) { return isReadingInc = false; }
-
-                                fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-                                    let out = b1.toString("utf8", 0, l1);
-                                    if (!out) { out = ""; } else { dataLen += l1; }
-
-                                    let errors = b2.toString("utf8", 0, l2);
-                                    if (!errors) { errors = "" } else { errLen += l2; }
-
-                                    // If there was no change in both {out} and {errors}, just return.
-                                    if (out === "" && errors === "") { return isReadingInc = false; }
-
-                                    this.emit("inc", { err: errors, out: out });
-
-                                    isReadingInc = false;
-                                });
-                            });
-                        });
-                    });
+                if (!out) {
+                    readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+                    readFile(`${this.opts.pathToFiles}/errors`, true);
+                    this.process = null;
+                    return this.emit("done", { err: "", out: "", time: "", timedOut: false });
                 }
             });
         }, 100);
+
+        let readFile = (path, isErr) => {
+
+            // Check if file is already being read.
+            if (isErr && isReadingErr || !isErr && isReadingInc) { return; }
+
+            let isReading = (b) => { if (isErr) { isReadingErr = b; } else { isReadingInc = b; } }
+
+            isReading(true);
+
+            fs.open(path, "r", (err, fd) => {
+
+                // Ignore errors and try again at the next interval.
+                if (err || !fd) { return isReading(false); }
+
+                fs.read(fd, Buffer.alloc(100000), 0, 100000, (isErr ? errLen : dataLen), (err, l, b) => {
+
+                    let out = b.toString("utf8", 0, l);
+                    if (!out) { out = ""; } else { if (isErr) { errLen += l } else { dataLen += l }; }
+
+                    // If there was no change in {out}, just return.
+                    if (out === "") { return isReading(false); }
+
+                    let incObj = {};
+                    incObj[isErr ? 'err' : 'out'] = out;
+
+                    if(this.process) { this.emit("inc", incObj); }
+
+                    isReading(false);
+                });
+            });
+        }
+
+        let ltimeOut = !1,
+            eTimeOut = !1;
+
+        // Read files on launch incase program has already outputted data before watchers are attached
+        readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+        readFile(`${this.opts.pathToFiles}/errors`, true);
+
+        // Create an FS.Watcher object to watch for file changes on /logfile.txt
+        this.logWatcher = fs.watch(this.opts.pathToFiles + "/logfile.txt", (ev, name) => {
+            if (name && !ltimeOut && !isReadingInc) {
+                ltimeOut = setTimeout(() => { ltimeOut = false; }, 100);
+
+                readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+            }
+        });
+
+        // Create an FS.Watcher object to watch for file changes on /errors
+        this.errWatcher = fs.watch(this.opts.pathToFiles + "/errors", (ev, name) => {
+            if (name && !eTimeOut && !isReadingErr) {
+                eTimeOut = setTimeout(() => { eTimeOut = false }, 100);
+
+                readFile(`${this.opts.pathToFiles}/errors`, true);
+            }
+        });
     });
 }
 
@@ -143,29 +135,32 @@ Attacher.prototype.attach = function () {
  * @param {string} text - Text to push to the program
  */
 Attacher.prototype.push = async function (text) {
-	this.stdinQueue.push(text);
-	let newStdinQueue = [];
-	if (this.process) {
-		for (let i = 0; i < this.stdinQueue.length; i++) {
-			try { await streamWrite(this.process.stdin, this.stdinQueue[i] + "\n"); } catch (e) {
-				newStdinQueue.push(this.stdinQueue[i]);
-			}
-		}
-		this.stdinQueue = newStdinQueue;
-	}
+    this.stdinQueue.push(text);
+    let newStdinQueue = [];
+    if (this.process) {
+        for (let i = 0; i < this.stdinQueue.length; i++) {
+            try {
+                await streamWrite(this.process.stdin, this.stdinQueue[i] + "\n");
+            } catch (e) {
+                newStdinQueue.push(this.stdinQueue[i]);
+            }
+        }
+        this.stdinQueue = newStdinQueue;
+    }
 }
 
 /**
  * Stops compilation and kills the docker process
  */
 Attacher.prototype.stop = function () {
-	if (this.process) {
+    if (this.process) {
 
-		// Kill process and clear intervals.
-		this.process.kill();
+        // Kill process and clear intervals.
+        this.process.kill();
 
-		exec(`docker rm -f ${this.opts.containerName}`);
+        fs.appendFileSync(`${this.opts.pathToFiles}/errors`, '\nCompiler Stopped.\n');
 
-		clearInterval(this.interval);
-	}
+        setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 200);
+
+    }
 }

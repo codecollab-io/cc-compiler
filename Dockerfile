@@ -27,6 +27,7 @@ RUN apt-get install -y software-properties-common
 # Installs Package Managers
 RUN apt-get update
 RUN apt-get install -y npm
+RUN apt-get install -y curl
 RUN curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
 RUN apt-get install -y python3-pip python-pip
 
@@ -83,6 +84,9 @@ RUN apt-get install -y g++-8
 
 # Installs Scala
 RUN apt-get install -y scala
+
+# Installs wget
+RUN apt-get install -y wget
 
 # Installs Swift CLI
 RUN wget https://swift.org/builds/swift-5.1.2-release/ubuntu1804/swift-5.1.2-RELEASE/swift-5.1.2-RELEASE-ubuntu18.04.tar.gz

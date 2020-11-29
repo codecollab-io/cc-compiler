@@ -6,6 +6,7 @@
  */
 
 const EventEmitter = require('events');
+const e = require('express');
 const exec = require("child_process").exec;
 const fs = require('fs');
 const streamWrite = require('@rauschma/stringio').streamWrite;
@@ -52,6 +53,10 @@ Compiler.prototype.constructor = Compiler;
  */
 Compiler.prototype.exec = function () {
 	const runner = compilers[this.opts.langNum];
+	
+	fs.writeFileSync(`${this.opts.pathToFiles}/logfile.txt`, "");
+	fs.writeFileSync(`${this.opts.pathToFiles}/errors`, "");
+	
 	let cmd = `${__dirname}/scripts/runner.sh `
           + `${this.opts.timeOut}s ${this.opts.containerName} `
           + `--name ${this.opts.containerName} -e 'NODE_PATH=/usr/local/lib/node_modules' `
@@ -67,153 +72,89 @@ Compiler.prototype.exec = function () {
 	 * @param {Boolean} isReadingInc - If program is in the process of reading the output files.
 	 */
 	let isLaunched = false;
-	let count = 0;
 	let [dataLen, errLen] = [0, 0];
-	let isReadingInc = false;
+	let isReadingInc = false,
+		isReadingErr = false;
 
-	this.checkInterval = setInterval(() => {
-
+	this.checkStatus = setInterval(() => {
 		// Check if docker container is still running
 		exec(`docker ps | grep ${this.opts.containerName}`, (err, out) => {
 
 			// Checks if docker container has been launched. If so, emit launched event.
-			if (out && isLaunched === false) { isLaunched = true; this.emit("launched"); }
+			if (out && !isLaunched) { isLaunched = !0; this.emit("launched"); return initWatchers(); }
 
-			// Checks if compiler has been stopped or should be stopped.
-			if ((!out && isLaunched) || count > this.timeOut) {
-				clearInterval(this.checkInterval);
-
-				fs.open(this.opts.pathToFiles + "/completed", "r", (err, fd) => {
-
-					// completed failed to open, meaning it was not created and compilation actually didn't finish.
-					if (err) { this._cleanUp(); return this.emit("done", { err: "\nCompiler stopped.\n", out: "", time: count, timedOut: true }); }
-
-					if (fd) {
-						fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-							if (err) { this._cleanUp(); return this.emit("error", err); }
-							if (count < this.opts.timeOut) {
-
-								// Compilation didn't time out, check for new errors
-								fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-									if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
-									fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-										// Convert Buffers to Strings, return result in done event.
-										let out = b1.toString("utf8", 0, l1);
-										let time = `${Math.round(count * 10) / 10}\n`;
-										try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
-										let errors = b2.toString("utf8", 0, l2);
-										this._cleanUp();
-										return this.emit("done", { err: errors, out: out, time: time, timedOut: false });
-									});
-								});
-							} else {
-
-								// Compilation timed out. Check if program has anymore output to be displayed.
-								fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
-
-									// If an error occurred when reading logfile.txt, means the file is probably too big to be read or simply can't be read.
-									if (err) { console.error(err); this._cleanUp(); return this.emit("error", "Output was too large to be read."); }
-
-									fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-
-										// Check error files for any additional errors.
-										fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-											if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
-											fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-												// Convert Buffers to Strings, return result in done event.
-												let out = b1.toString("utf8", 0, l1);
-												let time = `${Math.round(count * 10) / 10}\n`;
-												try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
-												let errors = b2.toString("utf8", 0, l2);
-												errors += "\nExecution Timed Out.\nAny changes made was not saved.\n";
-												this._cleanUp();
-												return this.emit("done", { err: errors, out: out, time: time, timedOut: true });
-											});
-										});
-									});
-								});
-							}
-						});
-					} else {
-
-						// Compilation timed out. Check if program has anymore output to be displayed.
-						fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
-
-							// If an error occurred when reading logfile.txt, means the file is probably too big to be read or simply can't be read.
-							if (err) { console.error(err); this._cleanUp(); return this.emit("error", "Output was too large to be read."); }
-
-							fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-
-								// Check error files for any additional errors.
-								fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-									if (err || !fd) { this._cleanUp(); return this.emit("error", err); }
-									fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-										// Convert Buffers to Strings, return result in done event.
-										let out = b1.toString("utf8", 0, l1);
-										let time = `${Math.round(count * 10) / 10}\n`;
-										try { time = fs.readFileSync(this.opts.pathToFiles + "/time", "utf8"); } catch (e) { };
-										let errors = b2.toString("utf8", 0, l2);
-										errors += "\nExecution Timed Out.\nAny changes made was not saved.\n";
-										this._cleanUp();
-										return this.emit("done", { err: errors, out: out, time: time, timedOut: true });
-									});
-								});
-							});
-						});
-					}
-
-				});
-			} else {
-
-				// Compilation is not finished and neither has it timed out yet.
-				// logfile.txt is read per interval for any new changes. If there are any, Compiler will emit an "inc" event.
-
-				if (isReadingInc) { return; }
-
-				// Set isReadingInc = true so files wouldn't be read multiples times at once.
-				isReadingInc = true;
-
-				fs.open(this.opts.pathToFiles + "/logfile.txt", "r", (err, fd) => {
-
-					// Ignore errors and try again at the next interval.
-					if (err || !fd) { return isReadingInc = false; }
-
-					fs.read(fd, new Buffer(100000), 0, 100000, dataLen, (err, l1, b1) => {
-
-						// Check error file for errors.
-						fs.open(this.opts.pathToFiles + "/errors", "r", (err, fd) => {
-
-							// Ignore errors and try again at the next interval.
-							if (err || !fd) { return isReadingInc = false; }
-
-							fs.read(fd, new Buffer(100000), 0, 100000, errLen, (err, l2, b2) => {
-
-								let out = b1.toString("utf8", 0, l1);
-								if (!out) { out = ""; } else { dataLen += l1; }
-
-								let errors = b2.toString("utf8", 0, l2);
-								if (!errors) { errors = "" } else { errLen += l2; }
-
-								// If there was no change in both {out} and {errors}, just return.
-								if (out === "" && errors === "") { return isReadingInc = false; }
-
-								// If change was present & isLaunched is still false, set isLaunched to true.
-								if (!isLaunched && (out !== "" || errors !== "")) { isLaunched = true; this.emit("launched");	}
-
-								this.emit("inc", { err: errors, out: out });
-
-								isReadingInc = false;
-							});
-						});
-					});
-				});
+			if (!out && isLaunched) {
+				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+				readFile(`${this.opts.pathToFiles}/errors`, true);
+				
+				this.emit("done", { err: "", out: "", time: "", timedOut: false });
+				this.process = null;
+				return this._cleanUp();
 			}
 		});
-		count += 0.1;
 	}, 100);
+
+	let initWatchers = () => {
+		let ltimeOut = !1,
+			eTimeOut = !1;
+		
+		// Read files on launch incase program has already outputted data before watchers are attached
+		readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+		readFile(`${this.opts.pathToFiles}/errors`, true);
+		
+		// Create an FS.Watcher object to watch for file changes on /logfile.txt
+		this.logWatcher = fs.watch(this.opts.pathToFiles + "/logfile.txt", (ev, name) => {
+			if(name && !ltimeOut && !isReadingInc) {
+				ltimeOut = setTimeout(() => { ltimeOut = false; }, 100);
+				
+				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+			}
+		});
+
+		// Create an FS.Watcher object to watch for file changes on /errors
+		this.errWatcher = fs.watch(this.opts.pathToFiles + "/errors", (ev, name) => {
+			if(name && !eTimeOut && !isReadingErr) {
+				eTimeOut = setTimeout(() => { eTimeOut = false }, 100);
+
+				readFile(`${this.opts.pathToFiles}/errors`, true);
+			}
+		});
+	}
+
+	let readFile = (path, isErr) => {
+
+		// Check if file is already being read.
+		if (isErr && isReadingErr || !isErr && isReadingInc) { return; }
+
+		let isReading = (b) => { if(isErr) { isReadingErr = b; } else { isReadingInc = b; } }
+
+		isReading(true);
+
+		fs.open(path, "r", (err, fd) => {
+					
+			// Ignore errors and try again at the next interval.
+			if (err || !fd) { return isReading(false); }
+
+			fs.read(fd, Buffer.alloc(100000), 0, 100000, (isErr ? errLen : dataLen), (err, l, b) => {
+
+				let out = b.toString("utf8", 0, l);
+				if (!out) { out = ""; } else { if(isErr) { errLen += l } else { dataLen += l }; }
+
+				// If there was no change in {out}, just return.
+				if (out === "") { return isReading(false); }
+
+				// If change was present & isLaunched is still false, set isLaunched to true.
+				if (!isLaunched && out !== "") { isLaunched = true; this.emit("launched");	}
+
+				let incObj = {};
+				incObj[isErr ? 'err' : 'out'] = out;
+
+				if(this.process) { this.emit("inc", incObj); }
+
+				isReading(false);
+			});
+		});
+	}
 }
 
 /**
@@ -225,9 +166,11 @@ Compiler.prototype.push = async function (text) {
 	let newStdinQueue = [];
 	if (this.process) {
 		for (let i = 0; i < this.stdinQueue.length; i++) {
-			try { await streamWrite(this.process.stdin, this.stdinQueue[i] + "\n"); } catch (e) {
-				newStdinQueue.push(this.stdinQueue[i]);
-			}
+			try {
+                await streamWrite(this.process.stdin, this.stdinQueue[i] + "\n");
+            } catch (e) {
+                newStdinQueue.push(this.stdinQueue[i]);
+            }
 		}
 		this.stdinQueue = newStdinQueue;
 	}
@@ -239,12 +182,11 @@ Compiler.prototype.push = async function (text) {
 Compiler.prototype.stop = function () {
 	if (this.process) {
 
-		// Kill process and clear intervals.
+		// Kill processes
 		this.process.kill();
 
 		exec(`docker rm -f ${this.opts.containerName}`);
 		
-		clearInterval(this.interval);
 	}
 }
 
@@ -252,14 +194,18 @@ Compiler.prototype.stop = function () {
  * Cleans up after compilation ends.
  */
 Compiler.prototype._cleanUp = function() {
+	
+	this.logWatcher.close();
+	this.errWatcher.close();
+
+	clearInterval(this.checkStatus);
+
 	// Wait 200ms so any attached clients have time to detect the stop.
 	setTimeout(() => {
-		try {
-			fs.unlinkSync(`${this.opts.pathToFiles}/completed`);
-			fs.unlinkSync(`${this.opts.pathToFiles}/logfile.txt`);
-			fs.unlinkSync(`${this.opts.pathToFiles}/time`);
-			fs.unlinkSync(`${this.opts.pathToFiles}/errors`);
-			fs.unlinkSync(`${this.opts.pathToFiles}/script.sh`);
-		} catch(e) { }
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/completed`); } catch(e) {}
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/logfile.txt`); } catch(e) {}
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/time`); } catch(e) {}
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/errors`); } catch(e) {}
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/script.sh`); } catch(e) {}
 	}, 200);
 }
