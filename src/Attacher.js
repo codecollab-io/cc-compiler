@@ -66,6 +66,7 @@ Attacher.prototype.attach = function () {
                     readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
                     readFile(`${this.opts.pathToFiles}/errors`, true);
                     this.process = null;
+                    clearInterval(this.checkStatus);
                     return this.emit("done", { err: "", out: "", time: "", timedOut: false });
                 }
             });
@@ -74,7 +75,7 @@ Attacher.prototype.attach = function () {
         let readFile = (path, isErr) => {
 
             // Check if file is already being read.
-            if (isErr && isReadingErr || !isErr && isReadingInc) { return; }
+            if ((isErr && isReadingErr) || (!isErr && isReadingInc)) { return; }
 
             let isReading = (b) => { if (isErr) { isReadingErr = b; } else { isReadingInc = b; } }
 
@@ -88,7 +89,11 @@ Attacher.prototype.attach = function () {
                 fs.read(fd, Buffer.alloc(100000), 0, 100000, (isErr ? errLen : dataLen), (err, l, b) => {
 
                     let out = b.toString("utf8", 0, l);
-                    if (!out) { out = ""; } else { if (isErr) { errLen += l } else { dataLen += l }; }
+                    if (!out) { out = ""; } else {
+                        if (out !== "\nCompiler Stopped.\n") {
+                            if (isErr) { errLen += l } else { dataLen += l };
+                        }
+                    }
 
                     // If there was no change in {out}, just return.
                     if (out === "") { return isReading(false); }

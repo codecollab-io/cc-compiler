@@ -83,11 +83,15 @@ Compiler.prototype.exec = function () {
 			// Checks if docker container has been launched. If so, emit launched event.
 			if (out && !isLaunched) { isLaunched = !0; this.emit("launched"); return initWatchers(); }
 
-			if (!out && isLaunched) {
+			let timedOut = out.indexOf("minute") > -1;
+			if ((!out && isLaunched) || timedOut) {
 				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
 				readFile(`${this.opts.pathToFiles}/errors`, true);
+
+				let time = "";
+				if(fs.existsSync(`${this.opts.pathToFiles}/time`)) { time = fs.readFileSync(`${this.opts.pathToFiles}/time`, 'utf-8'); }
 				
-				this.emit("done", { err: "", out: "", time: "", timedOut: false });
+				this.emit("done", { err: "", out: "", time: time, timedOut: timedOut });
 				this.process = null;
 				return this._cleanUp();
 			}
@@ -138,7 +142,11 @@ Compiler.prototype.exec = function () {
 			fs.read(fd, Buffer.alloc(100000), 0, 100000, (isErr ? errLen : dataLen), (err, l, b) => {
 
 				let out = b.toString("utf8", 0, l);
-				if (!out) { out = ""; } else { if(isErr) { errLen += l } else { dataLen += l }; }
+				if (!out) { out = ""; } else {
+					if (out !== "\nCompiler Stopped.\n") {
+						if (isErr) { errLen += l } else { dataLen += l };
+					}
+				}
 
 				// If there was no change in {out}, just return.
 				if (out === "") { return isReading(false); }
@@ -185,7 +193,9 @@ Compiler.prototype.stop = function () {
 		// Kill processes
 		this.process.kill();
 
-		exec(`docker rm -f ${this.opts.containerName}`);
+		fs.appendFileSync(`${this.opts.pathToFiles}/errors`, '\nCompiler Stopped.\n');
+
+        setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 200);
 		
 	}
 }

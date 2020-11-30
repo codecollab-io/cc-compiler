@@ -77,6 +77,3 @@ END=$(date +%s.%2N)
 runtime=$(echo "$END - $START" | bc)
 
 echo $runtime > /usercode/time
-
-mv /usercode/logfile.txt /usercode/completed
-

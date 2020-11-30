@@ -110,5 +110,5 @@ RUN npm install -g underscore request express pug shelljs passport http sys jque
 export NODE_PATH=/usr/local/lib/node_modules/
 
 # Installs Python PIP Packages
-RUN pip3 install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo
-RUN pip install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo
+RUN python3.7 -m pip install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo pillow
+RUN pip install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo pillow
