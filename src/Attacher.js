@@ -62,12 +62,17 @@ Attacher.prototype.attach = function () {
             // Check if docker container is still running
             exec(`docker ps | grep ${this.opts.containerName}`, (err, out) => {
 
-                if (!out) {
+                let timedOut = out.indexOf("minute") > -1;
+                if (!out || timedOut) {
                     readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
                     readFile(`${this.opts.pathToFiles}/errors`, true);
                     this.process = null;
                     clearInterval(this.checkStatus);
-                    return this.emit("done", { err: "", out: "", time: "", timedOut: false });
+
+                    let time = "";
+                    if(fs.existsSync(`${this.opts.pathToFiles}/time`)) { time = fs.readFileSync(`${this.opts.pathToFiles}/time`, 'utf-8'); }
+                    
+                    return this.emit("done", { err: "", out: "", time: time, timedOut: timedOut });
                 }
             });
         }, 100);
