@@ -32,13 +32,9 @@ function Compiler(opts) {
 	if (!opts.pathToFiles || typeof opts.pathToFiles !== "string") throw "Required param 'pathToFiles' missing or invalid.";
 	if (!opts.containerName || typeof opts.containerName !== "string") throw "Required param 'containerName' missing or invalid.";
 
-	// Copy payload script into code directory.
-	fs.copyFileSync(`${__dirname}/payload/script.sh`, `${opts.pathToFiles}/script.sh`);
-
-	exec(`chmod -R 777 ${opts.pathToFiles}`);
-
 	this.opts = opts;
 	this.stdinQueue = [];
+	this.isLaunched = false;
 
 	EventEmitter.call(this);
 }
@@ -53,16 +49,21 @@ Compiler.prototype.constructor = Compiler;
  */
 Compiler.prototype.exec = function () {
 	const runner = compilers[this.opts.langNum];
-	
+
+	// Copy payload script into code directory and create output files.
+	fs.copyFileSync(`${__dirname}/payload/script.sh`, `${this.opts.pathToFiles}/script.sh`);	
 	fs.writeFileSync(`${this.opts.pathToFiles}/logfile.txt`, "");
 	fs.writeFileSync(`${this.opts.pathToFiles}/errors`, "");
+
+	exec(`chmod -R 777 ${this.opts.pathToFiles}`);
 	
 	let cmd = `${__dirname}/scripts/runner.sh `
-          + `${this.opts.timeOut}s ${this.opts.containerName} `
+		  + `${this.opts.timeOut}s ${this.opts.containerName} `
+		  + `--user "$(id -u):$(id -g)" `
           + `--name ${this.opts.containerName} -e 'NODE_PATH=/usr/local/lib/node_modules' `
           + `--cpus=0.25 -m 200m -iv '${this.opts.pathToFiles}':/usercode cc-compiler `
           + `/usercode/script.sh ${runner[0]} "${this.opts.mainFile}" ${runner[1]} `;
-	this.process = exec(cmd);
+	this.process = exec(cmd, (e) => { if(e && !e.killed && e.code !== 137) { this.emit("error", e.message); return this._cleanUp(); }});
 
 	/**
 	 * Compilation variables
@@ -71,7 +72,7 @@ Compiler.prototype.exec = function () {
 	 * @param {Number} dataLen / @param {Number} errLen - Length of already read data from output files.
 	 * @param {Boolean} isReadingInc - If program is in the process of reading the output files.
 	 */
-	let isLaunched = false;
+	this.isLaunched = false;
 	let [dataLen, errLen] = [0, 0];
 	let isReadingInc = false,
 		isReadingErr = false;
@@ -81,10 +82,10 @@ Compiler.prototype.exec = function () {
 		exec(`docker ps | grep ${this.opts.containerName}`, (err, out) => {
 
 			// Checks if docker container has been launched. If so, emit launched event.
-			if (out && !isLaunched) { isLaunched = !0; this.emit("launched"); return initWatchers(); }
+			if (out && !this.isLaunched) { this.isLaunched = !0; this.emit("launched"); return initWatchers(); }
 
 			let timedOut = out.indexOf("minute") > -1;
-			if ((!out && isLaunched) || timedOut) {
+			if ((!out && this.isLaunched) || timedOut) {
 				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
 				readFile(`${this.opts.pathToFiles}/errors`, true);
 
@@ -99,8 +100,8 @@ Compiler.prototype.exec = function () {
 	}, 100);
 
 	let initWatchers = () => {
-		let ltimeOut = !1,
-			eTimeOut = !1;
+		let lastLogStamp = 0,
+            lastErrStamp = 0;
 		
 		// Read files on launch incase program has already outputted data before watchers are attached
 		readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
@@ -108,19 +109,27 @@ Compiler.prototype.exec = function () {
 		
 		// Create an FS.Watcher object to watch for file changes on /logfile.txt
 		this.logWatcher = fs.watch(this.opts.pathToFiles + "/logfile.txt", (ev, name) => {
-			if(name && !ltimeOut && !isReadingInc) {
-				ltimeOut = setTimeout(() => { ltimeOut = false; }, 100);
-				
-				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+			let stamp = new Date().getTime();
+			lastLogStamp = stamp;
+			if (name && !isReadingInc) {
+				setTimeout(() => {
+					if(lastLogStamp === stamp) {
+						readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+					}
+				}, 50);
 			}
 		});
 
 		// Create an FS.Watcher object to watch for file changes on /errors
 		this.errWatcher = fs.watch(this.opts.pathToFiles + "/errors", (ev, name) => {
-			if(name && !eTimeOut && !isReadingErr) {
-				eTimeOut = setTimeout(() => { eTimeOut = false }, 100);
-
-				readFile(`${this.opts.pathToFiles}/errors`, true);
+			let stamp = new Date().getTime();
+			lastErrStamp = stamp;
+			if (name && !isReadingErr) {
+				setTimeout(() => {
+					if(lastErrStamp === stamp) {
+						readFile(`${this.opts.pathToFiles}/errors`, true);
+					}
+				}, 50);
 			}
 		});
 	}
@@ -152,7 +161,7 @@ Compiler.prototype.exec = function () {
 				if (out === "") { return isReading(false); }
 
 				// If change was present & isLaunched is still false, set isLaunched to true.
-				if (!isLaunched && out !== "") { isLaunched = true; this.emit("launched");	}
+				if (!this.isLaunched && out !== "") { this.isLaunched = true; this.emit("launched");	}
 
 				let incObj = {};
 				incObj[isErr ? 'err' : 'out'] = out;
@@ -172,7 +181,7 @@ Compiler.prototype.exec = function () {
 Compiler.prototype.push = async function (text) {
 	this.stdinQueue.push(text);
 	let newStdinQueue = [];
-	if (this.process) {
+	if (this.process && this.isLaunched) {
 		for (let i = 0; i < this.stdinQueue.length; i++) {
 			try {
                 await streamWrite(this.process.stdin, this.stdinQueue[i] + "\n");
@@ -188,12 +197,12 @@ Compiler.prototype.push = async function (text) {
  * Stops compilation and kills the docker process
  */
 Compiler.prototype.stop = function () {
-	if (this.process) {
+	if (this.process && this.isLaunched) {
 
 		// Kill processes
 		this.process.kill();
 
-		fs.appendFileSync(`${this.opts.pathToFiles}/errors`, '\nCompiler Stopped.\n');
+		try { fs.appendFileSync(`${this.opts.pathToFiles}/errors`, '\nCompiler Stopped.\n'); } catch(e) { console.error(e); }
 
         setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 200);
 		

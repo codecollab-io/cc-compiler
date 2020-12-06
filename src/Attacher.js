@@ -56,18 +56,24 @@ Attacher.prototype.attach = function () {
 
         let [dataLen, errLen] = [0, 0];
         let isReadingInc = false,
-            isReadingErr = false;
+            isReadingErr = false,
+            isWatching = false,
+            sentDone = false;
 
         this.checkStatus = setInterval(() => {
             // Check if docker container is still running
             exec(`docker ps | grep ${this.opts.containerName}`, (err, out) => {
 
                 let timedOut = out.indexOf("minute") > -1;
-                if (!out || timedOut) {
+
+                if (out && !isWatching && !timedOut) { isWatching = true; return initWatchers(); }
+
+                if ((!out || timedOut) && !sentDone) {
+                    sentDone = true;
                     readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
                     readFile(`${this.opts.pathToFiles}/errors`, true);
-                    this.process = null;
-                    clearInterval(this.checkStatus);
+                    
+                    this._cleanUp();
 
                     let time = "";
                     if(fs.existsSync(`${this.opts.pathToFiles}/time`)) { time = fs.readFileSync(`${this.opts.pathToFiles}/time`, 'utf-8'); }
@@ -76,6 +82,41 @@ Attacher.prototype.attach = function () {
                 }
             });
         }, 100);
+
+        let initWatchers = () => {
+            let lastLogStamp = 0,
+                lastErrStamp = 0;
+
+            // Read files on launch incase program has already outputted data before watchers are attached
+            readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+            readFile(`${this.opts.pathToFiles}/errors`, true);
+
+            // Create an FS.Watcher object to watch for file changes on /logfile.txt
+            this.logWatcher = fs.watch(this.opts.pathToFiles + "/logfile.txt", (ev, name) => {
+                let stamp = new Date().getTime();
+                lastLogStamp = stamp;
+                if (name && !isReadingInc) {
+                    setTimeout(() => {
+                        if(lastLogStamp === stamp) {
+                            readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
+                        }
+                    }, 50);
+                }
+            });
+
+            // Create an FS.Watcher object to watch for file changes on /errors
+            this.errWatcher = fs.watch(this.opts.pathToFiles + "/errors", (ev, name) => {
+                let stamp = new Date().getTime();
+                lastErrStamp = stamp;
+                if (name && !isReadingErr) {
+                    setTimeout(() => {
+                        if(lastErrStamp === stamp) {
+                            readFile(`${this.opts.pathToFiles}/errors`, true);
+                        }
+                    }, 50);
+                }
+            });
+        }
 
         let readFile = (path, isErr) => {
 
@@ -112,31 +153,6 @@ Attacher.prototype.attach = function () {
                 });
             });
         }
-
-        let ltimeOut = !1,
-            eTimeOut = !1;
-
-        // Read files on launch incase program has already outputted data before watchers are attached
-        readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
-        readFile(`${this.opts.pathToFiles}/errors`, true);
-
-        // Create an FS.Watcher object to watch for file changes on /logfile.txt
-        this.logWatcher = fs.watch(this.opts.pathToFiles + "/logfile.txt", (ev, name) => {
-            if (name && !ltimeOut && !isReadingInc) {
-                ltimeOut = setTimeout(() => { ltimeOut = false; }, 100);
-
-                readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
-            }
-        });
-
-        // Create an FS.Watcher object to watch for file changes on /errors
-        this.errWatcher = fs.watch(this.opts.pathToFiles + "/errors", (ev, name) => {
-            if (name && !eTimeOut && !isReadingErr) {
-                eTimeOut = setTimeout(() => { eTimeOut = false }, 100);
-
-                readFile(`${this.opts.pathToFiles}/errors`, true);
-            }
-        });
     });
 }
 
@@ -173,4 +189,19 @@ Attacher.prototype.stop = function () {
         setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 200);
 
     }
+}
+
+/**
+ * Cleans up after compilation ends.
+ */
+Attacher.prototype._cleanUp = function() {
+	
+	//this.logWatcher.close();
+    //this.errWatcher.close();
+    
+    clearInterval(this.checkStatus);
+
+    this.process = null;
+    this.checkStatus = null;
+
 }
