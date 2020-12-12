@@ -51,7 +51,8 @@ Compiler.prototype.exec = function () {
 	const runner = compilers[this.opts.langNum];
 
 	// Copy payload script into code directory and create output files.
-	fs.copyFileSync(`${__dirname}/payload/script.sh`, `${this.opts.pathToFiles}/script.sh`);	
+	fs.copyFileSync(`${__dirname}/payload/script.sh`, `${this.opts.pathToFiles}/script.sh`);
+	if(this.opts.langNum === 10) { fs.copyFileSync(`${__dirname}/payload/javaRunner.sh`, `${this.opts.pathToFiles}/javaRunner.sh`); }
 	fs.writeFileSync(`${this.opts.pathToFiles}/logfile.txt`, "");
 	fs.writeFileSync(`${this.opts.pathToFiles}/errors`, "");
 
@@ -226,5 +227,6 @@ Compiler.prototype._cleanUp = function() {
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/time`); } catch(e) {}
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/errors`); } catch(e) {}
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/script.sh`); } catch(e) {}
+		try { fs.unlinkSync(`${this.opts.pathToFiles}/javaRunner.sh`); } catch(e) {}
 	}, 200);
 }
