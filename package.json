@@ -1,6 +1,6 @@
 {
   "name": "@portatolova/cc-compiler",
-  "version": "3.0.10",
+  "version": "3.0.11",
   "description": "Multi-language code compiler for untrusted code.",
   "main": "index.js",
   "types": "./types/index.d.ts",
