@@ -43,6 +43,8 @@ exec  2> $"/usercode/errors"
 
 cd /usercode/code/
 
+GOCACHE=off 
+
 START=$(date +%s.%2N)
 #Branch 1
 if [ "$output" = "" ]; then

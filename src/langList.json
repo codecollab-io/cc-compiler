@@ -1,11 +1,11 @@
 [
-    [ "python3.7", "" ],
+    [ "python3.9", "" ],
     [ "node", "" ],
     [ "coffee", "" ],
-    [ "tsc", "node" ],
-    [ "'g++-8 -std=c++17 -O2 -Wall -m64 -o /usercode/a.out'", "/usercode/a.out" ],
-    [ "'gcc-8 -o /usercode/a.out'", "/usercode/a.out" ],
-    [ "mcs", "'mono /usercode/'" ],
+    [ "ts-node", "" ],
+    [ "'g++ -std=c++17 -O2 -Wall -m64 -o /usercode/a.out'", "/usercode/a.out" ],
+    [ "'gcc -o /usercode/a.out'", "/usercode/a.out" ],
+    [ "'mcs -out:main.exe'", "'mono /usercode/code/main.exe'" ],
     [ ],
     [ "python", "" ],
     [ "bash", "" ],
@@ -16,6 +16,6 @@
     [ "ruby", "" ],
     [ "perl", "" ],
     [ "'kotlinc -include-runtime -d /usercode/a.jar'", "'java -jar /usercode/a.jar'" ],
-    [ "clojure", "" ],
-    [ "scala", "" ]
+    [ "elixir", "" ],
+    [ "'scalac -classpath . -d .'", "'scala -classpath . Main'" ]
 ]

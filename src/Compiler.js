@@ -60,7 +60,6 @@ Compiler.prototype.exec = function () {
 	
 	let cmd = `${__dirname}/scripts/runner.sh `
 		  + `${this.opts.timeOut}s ${this.opts.containerName} `
-		  + `--user "$(id -u):$(id -g)" `
           + `--name ${this.opts.containerName} -e 'NODE_PATH=/usr/local/lib/node_modules' `
           + `--cpus=0.25 -m 200m -iv '${this.opts.pathToFiles}':/usercode cc-compiler `
           + `/usercode/script.sh ${runner[0]} "${this.opts.mainFile}" ${runner[1]} `;
@@ -76,7 +75,8 @@ Compiler.prototype.exec = function () {
 	this.isLaunched = false;
 	let [dataLen, errLen] = [0, 0];
 	let isReadingInc = false,
-		isReadingErr = false;
+		isReadingErr = false,
+		sentDone = false;
 
 	this.checkStatus = setInterval(() => {
 		// Check if docker container is still running
@@ -86,7 +86,7 @@ Compiler.prototype.exec = function () {
 			if (out && !this.isLaunched) { this.isLaunched = !0; this.emit("launched"); return initWatchers(); }
 
 			let timedOut = out.indexOf("minute") > -1;
-			if ((!out && this.isLaunched) || timedOut) {
+			if (((!out && this.isLaunched) || timedOut) && !sentDone) {
 				readFile(`${this.opts.pathToFiles}/logfile.txt`, false);
 				readFile(`${this.opts.pathToFiles}/errors`, true);
 
@@ -94,6 +94,7 @@ Compiler.prototype.exec = function () {
 				if(fs.existsSync(`${this.opts.pathToFiles}/time`)) { time = fs.readFileSync(`${this.opts.pathToFiles}/time`, 'utf-8'); }
 				
 				this.emit("done", { err: "", out: "", time: time, timedOut: timedOut });
+				sentDone = true;
 				this.process = null;
 				return this._cleanUp();
 			}
@@ -215,8 +216,8 @@ Compiler.prototype.stop = function () {
  */
 Compiler.prototype._cleanUp = function() {
 	
-	this.logWatcher.close();
-	this.errWatcher.close();
+	try { this.logWatcher.close(); } catch(e) {}
+	try { this.errWatcher.close(); } catch(e) {}
 
 	clearInterval(this.checkStatus);
 
@@ -227,6 +228,5 @@ Compiler.prototype._cleanUp = function() {
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/time`); } catch(e) {}
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/errors`); } catch(e) {}
 		try { fs.unlinkSync(`${this.opts.pathToFiles}/script.sh`); } catch(e) {}
-		try { fs.unlinkSync(`${this.opts.pathToFiles}/javaRunner.sh`); } catch(e) {}
 	}, 200);
 }

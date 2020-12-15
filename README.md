@@ -72,7 +72,7 @@ Each language has an index or "langNum" used to identify it. Here are the langNu
     * 14 - Ruby
     * 15 - Perl
     * 16 - Kotlin
-    * 17 - Clojure
+    * 17 - Elixir
     * 18 - Scala
 
 #### `options.pathToFiles`:
