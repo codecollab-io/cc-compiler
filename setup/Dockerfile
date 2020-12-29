@@ -120,6 +120,10 @@ RUN cd /err; make
 COPY tmp /tmp/
 RUN cd /tmp; make; mv /bin/python3.9 /bin/python3.9-bin; mv /bin/python2.7 /bin/python2.7-bin; mv /tmp/python3.9 /bin/python3.9; mv /tmp/python2.7 /bin/python2.7;
 
+# Set Locale to support Chinese/Japanese characters
+RUN apt-get install -y locales
+ENV LANG C.UTF-8  
+
 # Create local user
 RUN useradd -ms /bin/bash cc-user
 USER cc-user
