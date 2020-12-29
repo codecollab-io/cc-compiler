@@ -25,20 +25,13 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN ln -s /bin/true /bin/systemctl
 
 # Installs system tools to allow other software/compilers to be installed
-RUN apt-get install -y sudo
-RUN apt-get install -y bc
-RUN apt-get install -y build-essential
-RUN apt-get install -y unzip
-RUN apt-get install -y curl
-RUN apt-get install -y software-properties-common
-RUN apt-get install -y wget
+RUN apt-get install -y sudo bc build-essential unzip curl software-properties-common wget git cmake
 
 # Install language compilers/interpreters
 RUN apt-get update
 RUN apt-get install -y ruby-full
 RUN apt-get install -y golang-go
-RUN apt-get install -y python2
-RUN apt-get install -y python3.9
+RUN apt-get install -y python2 python3.9 python2.7-dev python3.9-dev
 
 # Installs Package Managers
 RUN apt-get update
@@ -64,7 +57,6 @@ RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
 RUN apt-get update
 
 # Installs SQL, Perl and PHP7.3
-RUN apt-get update
 RUN apt-get install -y mysql-server
 RUN apt-get install -y perl
 RUN apt-get install -y apache2
@@ -117,5 +109,20 @@ export NODE_PATH=/usr/local/lib/node_modules/
 RUN python3.9 -m pip install numpy matplotlib pandas bs4 flask django pymongo pillow
 RUN pip2 install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo pillow
 
+RUN cp -R /usr/include/python3.9/cpython /usr/include/cpython
+
+# Makes all stderr red
+RUN git clone git://github.com/sickill/stderred.git
+RUN mv /stderred /err
+RUN cd /err; make
+
+# Setup custom python compilers
+COPY tmp /tmp/
+RUN cd /tmp; make; mv /bin/python3.9 /bin/python3.9-bin; mv /bin/python2.7 /bin/python2.7-bin; mv /tmp/python3.9 /bin/python3.9; mv /tmp/python2.7 /bin/python2.7;
+
+# Create local user
 RUN useradd -ms /bin/bash cc-user
 USER cc-user
+RUN /bin/bash -c "echo \"PS1='\[\033[1;3;31m\]>> \[\033[0m\]'\" >> /home/cc-user/.bashrc "
+WORKDIR /home/cc-user
+ENV LD_PRELOAD="/err/build/libstderred.so"

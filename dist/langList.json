@@ -1,0 +1,21 @@
+[
+    ["python3.9", ""],
+    ["node", ""],
+    ["coffee", ""],
+    ["ts-node", ""],
+    ["g++ -std=c++17 -O2 -Wall -m64", "./a.out"],
+    ["gcc", "./a.out"],
+    ["mcs -out:main.exe", "mono /usercode/code/main.exe"],
+    [],
+    ["python", ""],
+    ["bash", ""],
+    ["javac", "java {}"],
+    ["swift", ""],
+    ["go run", ""],
+    ["php", ""],
+    ["ruby", ""],
+    ["perl", ""],
+    ["kotlinc -include-runtime -d a.jar", "java -jar a.jar"],
+    ["elixir", ""],
+    ["scalac", "scala {}"]
+]
