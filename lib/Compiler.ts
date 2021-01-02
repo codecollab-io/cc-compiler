@@ -51,7 +51,7 @@ class Compiler extends EventEmitter {
 
         // Arguments for docker run command
         let args = ["run", "--rm", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
-                    "-itv", `${this.opts.pathToFiles}:/usercode/${this.opts.folderName}`, "--workdir", `/usercode/${this.opts.folderName}`, "cc-compiler", "/bin/bash"];
+                    "-itv", `${this.opts.pathToFiles}:/usercode/${this.opts.folderName}`, "--workdir", `/usercode/${this.opts.folderName}`, "cc-compiler", "/bin/bash", "-e"];
         
         // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
         this.process = spawn("docker", args, { name: 'xterm-256color', cols: 32, rows: 200 });
@@ -72,16 +72,15 @@ class Compiler extends EventEmitter {
 
             this.emit("inc", { out: e });
 
+            if(!sentStep2 && sentStep1 && !e.includes(arrow)) {
+                this.process?.write(String.fromCharCode(127).repeat(e.length));
+            }
+
             if(e.includes(arrow)) {
                 if(!sentStep1) { sentStep1 = !0; return this.process?.write(step1); }
-                try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep1 && !sentStep2 ? step1 : step2}'`); } catch(e) {
+                try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)}'`); } catch(e) {
                     if(!sentStep2) { sentStep2 = !0; return this.process?.write(step2); }
                     return exec(`docker rm -f ${this.opts.containerName}`);
-                }
-            } else {
-                // Undo any stdin writen between steps if there is a step2.
-                if(!sentStep2 && sentStep1) {
-                    return this.process?.write(String.fromCharCode(127));
                 }
             }
         });

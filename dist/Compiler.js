@@ -98,7 +98,7 @@ var Compiler = /** @class */ (function (_super) {
         child_process_1.exec("chmod -R 777 " + this.opts.pathToFiles + ";chown -R cc-user:cc-user /usercode");
         // Arguments for docker run command
         var args = ["run", "--rm", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
-            "-itv", this.opts.pathToFiles + ":/usercode/" + this.opts.folderName, "--workdir", "/usercode/" + this.opts.folderName, "cc-compiler", "/bin/bash"];
+            "-itv", this.opts.pathToFiles + ":/usercode/" + this.opts.folderName, "--workdir", "/usercode/" + this.opts.folderName, "cc-compiler", "/bin/bash", "-e"];
         // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
         this.process = node_pty_1.spawn("docker", args, { name: 'xterm-256color', cols: 32, rows: 200 });
         // Used for certain step2 commands
@@ -115,15 +115,18 @@ var Compiler = /** @class */ (function (_super) {
                 switch (_d.label) {
                     case 0:
                         this.emit("inc", { out: e });
-                        if (!e.includes(arrow)) return [3 /*break*/, 5];
+                        if (!sentStep2 && sentStep1 && !e.includes(arrow)) {
+                            (_a = this.process) === null || _a === void 0 ? void 0 : _a.write(String.fromCharCode(127).repeat(e.length));
+                        }
+                        if (!e.includes(arrow)) return [3 /*break*/, 4];
                         if (!sentStep1) {
                             sentStep1 = !0;
-                            return [2 /*return*/, (_a = this.process) === null || _a === void 0 ? void 0 : _a.write(step1)];
+                            return [2 /*return*/, (_b = this.process) === null || _b === void 0 ? void 0 : _b.write(step1)];
                         }
                         _d.label = 1;
                     case 1:
                         _d.trys.push([1, 3, , 4]);
-                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker top " + this.opts.containerName + " | grep '" + (sentStep1 && !sentStep2 ? step1 : step2) + "'")];
+                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker top " + this.opts.containerName + " | grep '" + (sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)) + "'")];
                     case 2:
                         _d.sent();
                         return [3 /*break*/, 4];
@@ -131,17 +134,10 @@ var Compiler = /** @class */ (function (_super) {
                         e_1 = _d.sent();
                         if (!sentStep2) {
                             sentStep2 = !0;
-                            return [2 /*return*/, (_b = this.process) === null || _b === void 0 ? void 0 : _b.write(step2)];
+                            return [2 /*return*/, (_c = this.process) === null || _c === void 0 ? void 0 : _c.write(step2)];
                         }
                         return [2 /*return*/, child_process_1.exec("docker rm -f " + this.opts.containerName)];
-                    case 4: return [3 /*break*/, 6];
-                    case 5:
-                        // Undo any stdin writen between steps if there is a step2.
-                        if (!sentStep2 && sentStep1) {
-                            return [2 /*return*/, (_c = this.process) === null || _c === void 0 ? void 0 : _c.write(String.fromCharCode(127))];
-                        }
-                        _d.label = 6;
-                    case 6: return [2 /*return*/];
+                    case 4: return [2 /*return*/];
                 }
             });
         }); });
