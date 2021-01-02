@@ -10,6 +10,7 @@ import { exec } from "child_process";
 import { spawn, IPty } from "node-pty";
 import { CompilerOptions } from "../types";
 import compilers from "./langList.json";
+import { promisify as p } from "util";
 
 class Compiler extends EventEmitter {
 
@@ -64,37 +65,24 @@ class Compiler extends EventEmitter {
             step1 = `${runner[0]} ${this.opts.mainFile}\r`,
             step2 = runner[1] ? `${runner[1].replace("{}", fileWithoutExt)}\r` : "",
             sentStep1 = false,
-            sentStep2 = !step2, // If there isn't a step2 command, we assume it has already been sent
-            receivedFinalArrow = false;
-        
+            sentStep2 = !step2; // If there isn't a step2 command, we assume it has already been sent
         
         // Handles terminal output and stdin
-        this.process.onData((e) => {
+        this.process.onData(async (e) => {
 
             this.emit("inc", { out: e });
 
-            // Stop container once all steps have been sent and program is done.
-            if(e.includes(arrow) && sentStep1 && sentStep2) { return exec(`docker rm -f ${this.opts.containerName}`); }
-        
-            if(!sentStep1 && e === arrow) {
-                return setTimeout(() => {
-                    if(sentStep1) { return; }
-                    sentStep1 = true;
-                    this.process?.write(step1);
-                }, 100);
-            }
-    
-            if(!sentStep2 && sentStep1 && e.includes(arrow)) {
-                return setTimeout(() => {
-                    if(sentStep2) { return; }
-                    sentStep2 = true;
-                    this.process?.write(step2);
-                }, 100);
-            }
-    
-            // Undo any stdin writen between steps if there is a step2.
-            if(!sentStep2 && sentStep1 && !e.includes(arrow) || receivedFinalArrow) {
-                return this.process?.write(String.fromCharCode(127));
+            if(e.includes(arrow)) {
+                if(!sentStep1) { sentStep1 = !0; return this.process?.write(step1); }
+                try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep1 && !sentStep2 ? step1 : step2}'`); } catch(e) {
+                    if(!sentStep2) { sentStep2 = !0; return this.process?.write(step2); }
+                    return exec(`docker rm -f ${this.opts.containerName}`);
+                }
+            } else {
+                // Undo any stdin writen between steps if there is a step2.
+                if(!sentStep2 && sentStep1) {
+                    return this.process?.write(String.fromCharCode(127));
+                }
             }
         });
 
