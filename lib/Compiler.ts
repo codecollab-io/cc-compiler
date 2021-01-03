@@ -67,6 +67,10 @@ class Compiler extends EventEmitter {
             sentStep1 = false,
             sentStep2 = !step2; // If there isn't a step2 command, we assume it has already been sent
         
+        // Check status variables
+        let isLaunched = false,     // Has the docker container started
+            sentDone = false;       // Has the "done" event been emitted, if so, don't send another one.
+        
         // Handles terminal output and stdin
         this.process.onData(async (e) => {
 
@@ -80,13 +84,16 @@ class Compiler extends EventEmitter {
                 if(!sentStep1) { sentStep1 = !0; return this.process?.write(step1); }
                 try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)}'`); } catch(e) {
                     if(!sentStep2) { sentStep2 = !0; return this.process?.write(step2); }
+
+                    this.emit("done", { out: "", timedOut: false });
+                    sentDone = true;
+
+                    this._cleanUp();
+
                     return exec(`docker rm -f ${this.opts.containerName}`);
                 }
             }
         });
-
-        let isLaunched = false,     // Has the docker container started
-            sentDone = false;       // Has the "done" event been emitted, if so, don't send another one.
         
         this.checkInterval = setInterval(() => {
             // Check if docker container is still running

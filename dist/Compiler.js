@@ -107,6 +107,9 @@ var Compiler = /** @class */ (function (_super) {
         var fileWithoutExt = _.join(".");
         // Handles automatic terminal logic such as sending run commands
         var arrow = "\u001b[1;3;31m>> \u001b[0m", step1 = runner[0] + " " + this.opts.mainFile + "\r", step2 = runner[1] ? runner[1].replace("{}", fileWithoutExt) + "\r" : "", sentStep1 = false, sentStep2 = !step2; // If there isn't a step2 command, we assume it has already been sent
+        // Check status variables
+        var isLaunched = false, // Has the docker container started
+        sentDone = false; // Has the "done" event been emitted, if so, don't send another one.
         // Handles terminal output and stdin
         this.process.onData(function (e) { return __awaiter(_this, void 0, void 0, function () {
             var e_1;
@@ -136,13 +139,14 @@ var Compiler = /** @class */ (function (_super) {
                             sentStep2 = !0;
                             return [2 /*return*/, (_c = this.process) === null || _c === void 0 ? void 0 : _c.write(step2)];
                         }
+                        this.emit("done", { out: "", timedOut: false });
+                        sentDone = true;
+                        this._cleanUp();
                         return [2 /*return*/, child_process_1.exec("docker rm -f " + this.opts.containerName)];
                     case 4: return [2 /*return*/];
                 }
             });
         }); });
-        var isLaunched = false, // Has the docker container started
-        sentDone = false; // Has the "done" event been emitted, if so, don't send another one.
         this.checkInterval = setInterval(function () {
             // Check if docker container is still running
             child_process_1.exec("docker ps | grep " + _this.opts.containerName, function (_, out) {
