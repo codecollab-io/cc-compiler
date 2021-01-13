@@ -68,13 +68,10 @@ var Attacher = /** @class */ (function (_super) {
     * Creates an Attacher instance.
     * @param {AttacherOptions} opts - Options object
     * @param {String} opts.containerName - Name of docker container
-    * @param {String} opts.pathToFiles - Path to container files
     */
     function Attacher(opts) {
         var _this = _super.call(this) || this;
         // Parameter checks
-        if (!opts.pathToFiles || typeof opts.pathToFiles !== "string")
-            throw "Required param 'pathToFiles' missing or invalid.";
         if (!opts.containerName || typeof opts.containerName !== "string")
             throw "Required param 'containerName' missing or invalid.";
         _this.opts = opts;
@@ -86,68 +83,64 @@ var Attacher = /** @class */ (function (_super) {
     Attacher.prototype.attach = function () {
         var _a;
         return __awaiter(this, void 0, void 0, function () {
-            var exists, attached, logs, logger, e_1, sentDone;
+            var attached, logs, logger, sentDone, done, e_1;
             var _this = this;
             return __generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
-                        exists = false, attached = false, logs = "";
+                        attached = false, logs = "";
                         logger = child_process_1.exec("docker logs " + this.opts.containerName + " -f");
                         (_a = logger.stdout) === null || _a === void 0 ? void 0 : _a.on("data", function (d) {
-                            if (!attached && exists) {
-                                return _this.emit("inc", { out: d });
-                            } // Only start sending data to user once it is confirmed that container does exist.
+                            setTimeout(function () { if (!attached && !logger.killed) {
+                                _this.emit("inc", { out: d });
+                            } }, 10); // Only start sending data to user once it is confirmed that container does exist.
                             logs += d;
                         });
+                        sentDone = false;
+                        done = function () { if (!sentDone) {
+                            sentDone = true;
+                            _this._cleanUp();
+                            logger.kill(1);
+                            return _this.emit("done");
+                        } };
                         _b.label = 1;
                     case 1:
                         _b.trys.push([1, 3, , 4]);
-                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker ps | grep " + this.opts.containerName)];
+                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker ps -a | grep " + this.opts.containerName)];
                     case 2:
                         _b.sent();
                         return [3 /*break*/, 4];
                     case 3:
                         e_1 = _b.sent();
-                        logger.kill();
+                        if (logs) {
+                            return [2 /*return*/, done()];
+                        }
+                        logger.kill(1);
                         return [2 /*return*/, this.emit("error", "No container with name '" + this.opts.containerName + "' found.")];
                     case 4:
                         // Container is now guaranteed to exist
-                        this.emit("inc", { out: logs }); // Output any logs that was already previously collected to the user
-                        exists = true; // Allow {logger} to output anymore data to the user while the attacher attaches to docker attach.
                         // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
                         this.process = node_pty_1.spawn("docker", ["attach", this.opts.containerName], { name: 'xterm-256color', cols: 32, rows: 200 });
                         // Handles data coming from docker attach
                         this.process.onData(function (e) { return __awaiter(_this, void 0, void 0, function () {
                             return __generator(this, function (_a) {
+                                attached = true;
+                                if (!logger.killed) {
+                                    logger.kill();
+                                }
                                 if (e.substr(0, 25) === "Error: No such container:") {
-                                    return [2 /*return*/];
+                                    return [2 /*return*/, done()];
                                 } // Handles race condition that compiler has already been destroyed upon attach
                                 if (e === "You cannot attach to a stopped container, start it first\r\n") {
-                                    return [2 /*return*/];
+                                    return [2 /*return*/, done()];
                                 } // Handles race condition that compiler was in the midst of getting destroyed upon attach
-                                if (!attached) {
-                                    attached = true;
-                                    logger.kill();
-                                    this.emit("attached");
-                                } // Sets attached to true so that {logger} is no longer needed.
                                 this.emit("inc", { out: e });
+                                console.log("INC");
                                 return [2 /*return*/];
                             });
                         }); });
-                        sentDone = false;
-                        // Check if container still exists
-                        this.checkInterval = setInterval(function () {
-                            // Check if docker container is still running
-                            child_process_1.exec("docker ps | grep " + _this.opts.containerName, function (err, out) {
-                                // Checks if container has been running for over a minute. If so, stop the container.
-                                var timedOut = out.indexOf("minute") > -1;
-                                if ((!out || timedOut) && !sentDone) {
-                                    sentDone = true;
-                                    _this._cleanUp();
-                                    return _this.emit("done", { err: "", out: "", timedOut: timedOut });
-                                }
-                            });
-                        }, 100);
+                        this.emit("attached");
+                        child_process_1.exec("docker wait " + this.opts.containerName, done);
                         return [2 /*return*/];
                 }
             });
@@ -192,9 +185,6 @@ var Attacher = /** @class */ (function (_super) {
     // Cleans up after compilation ends.
     Attacher.prototype._cleanUp = function () {
         var _a;
-        if (this.checkInterval) {
-            clearInterval(this.checkInterval);
-        }
         try {
             (_a = this.process) === null || _a === void 0 ? void 0 : _a.kill("1");
         }

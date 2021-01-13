@@ -45,12 +45,14 @@ class Compiler extends EventEmitter {
     /**
      * Compilation function 
      */
-    exec() {
+    async exec() {
         const runner = compilers[this.opts.langNum];
         exec(`chmod -R 777 ${this.opts.pathToFiles};chown -R cc-user:cc-user /usercode`);
 
+        try { await p(exec)(`docker rm -f ${this.opts.containerName}; while docker container inspect myTask >/dev/null 2>&1; do sleep 0.1; done`); } catch(e) {}
+
         // Arguments for docker run command
-        let args = ["run", "--rm", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
+        let args = ["run", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
                     "-itv", `${this.opts.pathToFiles}:/usercode/${this.opts.folderName}`, "--workdir", `/usercode/${this.opts.folderName}`, "cc-compiler", "/bin/bash", "-e"];
         
         // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
@@ -74,9 +76,9 @@ class Compiler extends EventEmitter {
         // Handles terminal output and stdin
         this.process.onData(async (e) => {
 
-            this.emit("inc", { out: e });
+            if(!sentDone) { this.emit("inc", { out: e }); }
 
-            if(!sentStep2 && sentStep1 && !e.includes(arrow)) {
+            if((!sentStep2 || !sentStep1) && !e.includes(arrow)) {
                 this.process?.write(String.fromCharCode(127).repeat(e.length));
             }
 
@@ -84,13 +86,15 @@ class Compiler extends EventEmitter {
                 if(!sentStep1) { sentStep1 = !0; return this.process?.write(step1); }
                 try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)}'`); } catch(e) {
                     if(!sentStep2) { sentStep2 = !0; return this.process?.write(step2); }
+                    if(sentDone) { return; }
 
                     this.emit("done", { out: "", timedOut: false });
                     sentDone = true;
 
                     this._cleanUp();
 
-                    return exec(`docker rm -f ${this.opts.containerName}`);
+                    exec(`docker kill ${this.opts.containerName}`);
+                    return setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 500);
                 }
             }
         });
@@ -108,8 +112,10 @@ class Compiler extends EventEmitter {
     
                     this.emit("done", { out: "", timedOut: timedOut });
                     sentDone = true;
-                        
-                    return this._cleanUp();
+                    
+                    this._cleanUp();
+                    exec(`docker kill ${this.opts.containerName}`);
+                    return setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 500);
                 }
             });
         }, 500);
