@@ -68,7 +68,7 @@ class Attacher extends EventEmitter {
             if (!logger.killed) { logger.kill(); }
             if (e.substr(0, 25) === "Error: No such container:") { return done(); }                         // Handles race condition that compiler has already been destroyed upon attach
             if (e === "You cannot attach to a stopped container, start it first\r\n") { return done(); }    // Handles race condition that compiler was in the midst of getting destroyed upon attach
-            this.emit("inc", { out: e }); console.log("INC");
+            this.emit("inc", { out: e });
         });
 
         this.emit("attached");

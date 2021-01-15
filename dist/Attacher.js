@@ -135,7 +135,6 @@ var Attacher = /** @class */ (function (_super) {
                                     return [2 /*return*/, done()];
                                 } // Handles race condition that compiler was in the midst of getting destroyed upon attach
                                 this.emit("inc", { out: e });
-                                console.log("INC");
                                 return [2 /*return*/];
                             });
                         }); });
