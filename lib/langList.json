@@ -5,7 +5,7 @@
     [ "ts-node", ""],
     [ "g++ -std=c++17 -O2 -Wall -m64", "./a.out"],
     [ "gcc", "./a.out"],
-    [ "mcs -out:main.exe", "mono /usercode/code/main.exe"],
+    [ "mcs -out:main.exe", "mono ./main.exe"],
     [ ],
     [ "python", ""],
     [ "bash", ""],
