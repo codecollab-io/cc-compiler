@@ -112,7 +112,7 @@ RUN pip2 install numpy matplotlib scipy pandas scikit-learn bs4 flask django pym
 RUN cp -R /usr/include/python3.9/cpython /usr/include/cpython
 
 # Makes all stderr red
-RUN git clone git://github.com/sickill/stderred.git
+RUN git clone git://github.com/Portatolova/stderred.git
 RUN mv /stderred /err
 RUN cd /err; make
 
