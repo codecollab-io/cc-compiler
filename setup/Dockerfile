@@ -37,7 +37,7 @@ RUN apt-get install -y python2 python3.9 python2.7-dev python3.9-dev
 RUN apt-get update
 RUN apt-get install -y npm
 RUN curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
-RUN curl https://bootstrap.pypa.io/get-pip.py --output get-pip.py
+RUN curl https://bootstrap.pypa.io/2.7/get-pip.py --output get-pip.py
 RUN python2 get-pip.py && rm get-pip.py
 RUN apt-get install -y python3-pip
 
