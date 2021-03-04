@@ -4,13 +4,14 @@
 // TypeScript Version: 3.0
 
 import { EventEmitter } from 'events';
+import { IPty } from "node-pty";
 
 interface CompilerOptions {
-    timeOut: number;
     langNum: number;
     mainFile: string;
     pathToFiles: string;
     containerName: string;
+    folderName?: string;
 }
 
 interface AttacherOptions {
@@ -20,7 +21,7 @@ interface AttacherOptions {
 
 declare class Compiler extends EventEmitter {
     opts: CompilerOptions;
-    stdinQueue: Array<string>;
+    process?: IPty;
 
     constructor(options: CompilerOptions);
 
@@ -32,6 +33,8 @@ declare class Compiler extends EventEmitter {
 
     _cleanUp(): void;
 
+    resize(size: { cols: number; rows: number }): void;
+
     on(event: 'launched', callback: () => void): this;
     on(event: 'inc', callback: (data: { out: string; err: string }) => void): this;
     on(event: 'done', callback: (data: { out: string; err: string, time: string, timedOut: boolean }) => void): this;
@@ -41,7 +44,7 @@ declare class Compiler extends EventEmitter {
 
 declare class Attacher extends EventEmitter {
     opts: AttacherOptions;
-    stdinQueue: Array<string>;
+    process?: IPty;
 
     constructor(options: AttacherOptions);
 
@@ -50,6 +53,10 @@ declare class Attacher extends EventEmitter {
     push(text: string): void;
 
     stop(): void;
+
+    _cleanUp(): void;
+
+    resize(size: { cols: number; rows: number }): void;
 
     on(event: 'attached', callback: () => void): this;
     on(event: 'inc', callback: (data: { out: string; err: string }) => void): this;
