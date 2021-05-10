@@ -25,7 +25,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN ln -s /bin/true /bin/systemctl
 
 # Installs system tools to allow other software/compilers to be installed
-RUN apt-get install -y sudo bc build-essential unzip curl software-properties-common wget git cmake
+RUN apt-get install -y bc build-essential unzip curl software-properties-common wget git cmake
 
 # Install language compilers/interpreters
 RUN apt-get update
@@ -36,8 +36,8 @@ RUN apt-get install -y python2 python3.9 python2.7-dev python3.9-dev
 # Installs Package Managers
 RUN apt-get update
 RUN apt-get install -y npm
-RUN curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
-RUN curl https://bootstrap.pypa.io/2.7/get-pip.py --output get-pip.py
+RUN curl -sL https://deb.nodesource.com/setup_10.x | bash -
+RUN curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip.py
 RUN python2 get-pip.py && rm get-pip.py
 RUN apt-get install -y python3-pip
 
@@ -96,8 +96,8 @@ RUN apt-get -y upgrade
 RUN apt-get -y autoremove
 
 # Install Erlang/Elixir
-RUN wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
-RUN echo "deb https://packages.erlang-solutions.com/ubuntu focal contrib" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
+RUN wget -O- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | apt-key add -
+RUN echo "deb https://packages.erlang-solutions.com/ubuntu focal contrib" | tee /etc/apt/sources.list.d/rabbitmq.list
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y erlang
 RUN apt-get install -y elixir
 
@@ -106,7 +106,7 @@ RUN npm install -g ts-node underscore request express pug shelljs passport http 
 export NODE_PATH=/usr/local/lib/node_modules/
 
 # Installs Python PIP Packages
-RUN python3.9 -m pip install numpy matplotlib pandas bs4 flask django pymongo pillow
+RUN python3.9 -m pip install numpy matplotlib scikit-learn pandas bs4 flask django pymongo pillow
 RUN pip2 install numpy matplotlib scipy pandas scikit-learn bs4 flask django pymongo pillow
 
 RUN cp -R /usr/include/python3.9/cpython /usr/include/cpython
