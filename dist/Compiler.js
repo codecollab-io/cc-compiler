@@ -63,6 +63,7 @@ var child_process_1 = require("child_process");
 var node_pty_1 = require("node-pty");
 var langList_json_1 = __importDefault(require("./langList.json"));
 var util_1 = require("util");
+var findFilesInDir_1 = __importDefault(require("./findFilesInDir"));
 var Compiler = /** @class */ (function (_super) {
     __extends(Compiler, _super);
     /**
@@ -94,7 +95,7 @@ var Compiler = /** @class */ (function (_super) {
      */
     Compiler.prototype.exec = function () {
         return __awaiter(this, void 0, void 0, function () {
-            var runner, e_1, args, _, fileWithoutExt, arrow, step1, step2, sentStep1, sentStep2, isLaunched, sentDone;
+            var runner, e_1, args, _, fileWithoutExt, toCompile, arrow, step1, step2, sentStep1, sentStep2, isLaunched, sentDone;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
@@ -119,7 +120,8 @@ var Compiler = /** @class */ (function (_super) {
                         _ = this.opts.mainFile.split(".");
                         _.pop();
                         fileWithoutExt = _.join(".");
-                        arrow = "\u001b[1;3;31m>> \u001b[0m", step1 = runner[0] + " " + this.opts.mainFile + "\r", step2 = runner[1] ? runner[1].replace("{}", fileWithoutExt) + "\r" : "", sentStep1 = false, sentStep2 = !step2;
+                        toCompile = this.opts.langNum === 4 ? findFilesInDir_1.default(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile;
+                        arrow = "\u001b[1;3;31m>> \u001b[0m", step1 = runner[0] + " " + toCompile + "\r", step2 = runner[1] ? runner[1].replace("{}", fileWithoutExt) + "\r" : "", sentStep1 = false, sentStep2 = !step2;
                         isLaunched = false, sentDone = false;
                         // Handles terminal output and stdin
                         this.process.onData(function (e) { return __awaiter(_this, void 0, void 0, function () {

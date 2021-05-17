@@ -11,6 +11,7 @@ import { spawn, IPty } from "node-pty";
 import { CompilerOptions } from "../types";
 import compilers from "./langList.json";
 import { promisify as p } from "util";
+import findFilesInDir from "./findFilesInDir";
 
 class Compiler extends EventEmitter {
 
@@ -62,9 +63,11 @@ class Compiler extends EventEmitter {
         let _ = this.opts.mainFile.split("."); _.pop();
         let fileWithoutExt = _.join(".");
         
+        let toCompile = this.opts.langNum === 4 ? findFilesInDir(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile;
+
         // Handles automatic terminal logic such as sending run commands
         let arrow = "\u001b[1;3;31m>> \u001b[0m",
-            step1 = `${runner[0]} ${this.opts.mainFile}\r`,
+            step1 = `${runner[0]} ${toCompile}\r`,
             step2 = runner[1] ? `${runner[1].replace("{}", fileWithoutExt)}\r` : "",
             sentStep1 = false,
             sentStep2 = !step2; // If there isn't a step2 command, we assume it has already been sent
