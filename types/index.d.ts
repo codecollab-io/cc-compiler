@@ -8,10 +8,11 @@ import { IPty } from "node-pty";
 
 interface CompilerOptions {
     langNum: number;
-    mainFile: string;
     pathToFiles: string;
     containerName: string;
+    mainFile?: string;
     folderName?: string;
+    dimensions?: { rows: number, cols: number }
 }
 
 interface AttacherOptions {
@@ -25,7 +26,7 @@ declare class Compiler extends EventEmitter {
 
     constructor(options: CompilerOptions);
 
-    exec(): void;
+    connect(): void;
 
     push(text: string): void;
 
@@ -33,6 +34,7 @@ declare class Compiler extends EventEmitter {
 
     _cleanUp(): void;
 
+    /** @deprecated */
     resize(size: { cols: number; rows: number }): void;
 
     on(event: 'launched', callback: () => void): this;

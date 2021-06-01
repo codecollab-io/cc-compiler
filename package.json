@@ -18,10 +18,12 @@
   },
   "homepage": "https://github.com/codecollab-io/cc-compiler#readme",
   "dependencies": {
+    "dockerode": "^3.3.0",
     "event-emitter-es6": "^1.1.5",
     "node-pty": "^0.9.0"
   },
   "devDependencies": {
+    "@types/dockerode": "^3.2.3",
     "@types/event-emitter-es6": "^1.1.0",
     "@types/node": "^14.14.14",
     "typescript": "^4.1.3"

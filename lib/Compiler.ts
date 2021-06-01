@@ -5,28 +5,31 @@
  * Author: Carl Ian Voller
  */
 
-import EventEmitter from "event-emitter-es6";
-import { exec } from "child_process";
-import { spawn, IPty } from "node-pty";
+import { EventEmitter } from "events";
 import { CompilerOptions } from "../types";
-import compilers from "./langList.json";
-import { promisify as p } from "util";
+import langList from "./langList";
 import findFilesInDir from "./findFilesInDir";
+import dockerode from "dockerode";
+import { spawn, IPty } from "node-pty";
+import { exec as e, ChildProcess } from "child_process";
 
+const Docker = new dockerode({ socketPath: '/var/run/docker.sock' });
+ 
 class Compiler extends EventEmitter {
 
     opts: CompilerOptions;
     folderName: string;
-    process?: IPty;
-    checkInterval?: NodeJS.Timeout;
+    private process?: IPty;
+    private container?: dockerode.Container;
 
     /**
      * Creates a compiler instance.
      * @param {CompilerOptions} opts - Options object
      * @param {Number} opts.langNum - Index of Language to compile file in
-     * @param {String} opts.mainFile - File to execute on compilation
      * @param {String} opts.pathToFiles - Absolute path to location of files
-     * @param {String} opts.containerName	- Name of docker container
+     * @param {String} opts.containerName - Name of docker container & committed image on container exit.
+     * @param {String} opts.mainFile (OPTIONAL) - File to execute on compilation. If left blank, will initialise Interactive mode or Bash shell.
+     * @param {{ rows: number, cols: number }} opts.dimensions (OPTIONAL) - Pseudo-tty dimensions. If left blank, will use { rows: 200, cols: 80 }
      * @param {String} opts.folderName (OPTIONAL) - Name of folder where files are stored within the container. If left blank, "code" is used instead. 
      */
     constructor(opts: CompilerOptions) {
@@ -34,94 +37,90 @@ class Compiler extends EventEmitter {
 
         // Parameter checks
         if ((!opts.langNum && opts.langNum !== 0) || typeof opts.langNum !== "number") throw "Required param 'langNum' missing or invalid.";
-        if (!opts.mainFile || typeof opts.mainFile !== "string") throw "Required param 'mainFile' missing or invalid.";
         if (!opts.pathToFiles || typeof opts.pathToFiles !== "string") throw "Required param 'pathToFiles' missing or invalid.";
         if (!opts.containerName || typeof opts.containerName !== "string") throw "Required param 'containerName' missing or invalid.";
+
+        opts.dimensions = opts.dimensions || { rows: 200, cols: 80 };
 
         this.opts = opts;
         this.folderName = opts.folderName || "code";
     }
 
-    
     /**
-     * Compilation function 
+     * Connect to docker container. This will check if there is an existing
+     * docker container with the same name running. If there is, it will attach to that running container.
+     * Otherwise, it will call this._createContainer()
      */
-    async exec() {
-        const runner = compilers[this.opts.langNum];
-        exec(`chmod -R 777 ${this.opts.pathToFiles};chown -R cc-user:cc-user /usercode`);
-
-        try { await p(exec)(`docker rm -f ${this.opts.containerName}; while docker container inspect myTask >/dev/null 2>&1; do sleep 0.1; done`); } catch(e) {}
-
-        // Arguments for docker run command
-        let args = ["run", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
-                    "-itv", `${this.opts.pathToFiles}:/usercode/${this.opts.folderName}`, "--workdir", `/usercode/${this.opts.folderName}`, "cc-compiler", "/bin/bash", "-e"];
-        
-        // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
-        this.process = spawn("docker", args, { name: 'xterm-256color', cols: 32, rows: 200 });
-
-        // Used for certain step2 commands
-        let _ = this.opts.mainFile.split("."); _.pop();
-        let fileWithoutExt = _.join(".");
-        
-        let toCompile = this.opts.langNum === 4 ? findFilesInDir(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile;
-
-        // Handles automatic terminal logic such as sending run commands
-        let arrow = "\u001b[1;3;31m>> \u001b[0m",
-            step1 = `${runner[0]} ${toCompile}\r`,
-            step2 = runner[1] ? `${runner[1].replace("{}", fileWithoutExt)}\r` : "",
-            sentStep1 = false,
-            sentStep2 = !step2; // If there isn't a step2 command, we assume it has already been sent
-        
-        // Check status variables
-        let isLaunched = false,     // Has the docker container started
-            sentDone = false;       // Has the "done" event been emitted, if so, don't send another one.
-        
-        // Handles terminal output and stdin
-        this.process.onData(async (e) => {
-
-            if(!sentDone) { this.emit("inc", { out: e }); }
-
-            if((!sentStep2 || !sentStep1) && !e.includes(arrow)) {
-                this.process?.write(String.fromCharCode(127).repeat(e.length));
+    async connect() {
+        let container: dockerode.Container,
+            alreadyStarted = false;
+        try {
+            container = Docker.getContainer(this.opts.containerName);
+            await container.inspect();
+            alreadyStarted = true;
+        } catch(err) {
+            try {
+                container = await this._createContainer();
+            } catch(e) {
+                container = Docker.getContainer(this.opts.containerName);
+                alreadyStarted = true;
             }
+        }
 
-            if(e.includes(arrow)) {
-                if(!sentStep1) { sentStep1 = !0; return this.process?.write(step1); }
-                try { await p(exec)(`docker top ${this.opts.containerName} | grep '${sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)}'`); } catch(e) {
-                    if(!sentStep2) { sentStep2 = !0; return this.process?.write(step2); }
-                    if(sentDone) { return; }
+        let cmd = `docker attach ${this.opts.containerName}`;
+        let ttyCmd = ["-c", `${cmd}`]
+        this.container = container;
+        this.process = spawn("bash", ttyCmd, { name: 'xterm-256color', ...this.opts.dimensions });
+        this.process.onData((e) => {
+            this.emit("inc", e);
+        });
 
-                    this.emit("done", { out: "", timedOut: false });
-                    sentDone = true;
+        this.process.onExit((e) => {
+            this.emit("inc", `\n\n[Process exited with code ${e.exitCode}]`);
+            this._onExit(container);
+        });
+    }
 
-                    this._cleanUp();
+    /**
+     * Runs when the docker container exits.
+     * @param {dockerode.Container} container 
+     */
+    private async _onExit(container: dockerode.Container) {
+        await container.commit({ repo: `proj_${this.opts.containerName}` });
+        await container.remove();
+        this.emit("done");
+    }
 
-                    exec(`docker kill ${this.opts.containerName}`);
-                    return setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 500);
-                }
+    private async _createContainer() {
+        let isInteractive = !this.opts.mainFile;
+        let compiler = !isInteractive ? langList.compilers[this.opts.langNum][0] : (langList.interactive[this.opts.langNum] || "/bin/bash");
+        let toCompile = this.opts.mainFile ? this.opts.langNum === 4 ? findFilesInDir(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile : "";
+        let Image = "cc-compiler";
+        try { await Docker.getImage(`proj_${this.opts.containerName}`).inspect(); Image = `proj_${this.opts.containerName}` } catch(e) {}
+        let container = await Docker.createContainer({
+            Image,
+            Tty: true,
+            AttachStdin: true,
+            AttachStdout: true,
+            AttachStderr: true,
+            name: this.opts.containerName,
+            Cmd: isInteractive ? [compiler] : [compiler, toCompile],
+            OpenStdin: true,
+            StdinOnce: false,
+            WorkingDir: `/home/cc-user/${this.opts.folderName}`,
+            HostConfig: {
+                Binds: [`${this.opts.pathToFiles}:/home/cc-user/${this.opts.folderName}`]
             }
         });
-        
-        this.checkInterval = setInterval(() => {
-            // Check if docker container is still running
-            exec(`docker ps | grep ${this.opts.containerName}`, (_: any, out: string) => {
-    
-                // Checks if docker container has been launched. If so, emit launched event.
-                if (out && !isLaunched) { isLaunched = !0; this.emit("launched"); return; }
-    
-                // Timeout code execution after one minute.
-                let timedOut = out.indexOf("minute") > -1;
-                if (((!out && isLaunched) || timedOut) && !sentDone) {
-    
-                    this.emit("done", { out: "", timedOut: timedOut });
-                    sentDone = true;
-                    
-                    this._cleanUp();
-                    exec(`docker kill ${this.opts.containerName}`);
-                    return setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 500);
-                }
-            });
-        }, 500);
+        return container;
+    }
+
+    /**
+     * @deprecated
+     * Resizing the tty WILL cause terminal formatting glitches.
+     */
+    resize({ cols, rows }: { cols: number, rows: number }) {
+        try { this.process?.resize(cols, rows); } catch(e) {}
     }
 
     /**
@@ -129,24 +128,14 @@ class Compiler extends EventEmitter {
      * @param {string} text - Text to push to the program
      */
     push (text: string) {
-        try { this.process?.write(text); } catch(e) { console.warn(e); }
+        if (!this.process) { return; }
+        try { this.process.write(text); } catch(e) { console.warn(e); }
     }
 
-    // Stops compilation and kills the docker process
+    // Kills the docker container
     stop () {
-        try { this.process?.kill("1"); } catch(e) { console.warn(e); }           // Kill processes
-        setTimeout(() => exec(`docker rm -f ${this.opts.containerName}`), 200); // Remove docker container
-    }
-
-    // Resizes pseudo-tty
-    resize({ cols, rows }: { cols: number, rows: number }) {
-        try { this.process?.resize(cols, rows); } catch(e) { console.warn(e); }
-    }
-
-    // Cleans up after compilation ends.
-    _cleanUp() {
-        if(this.checkInterval) { clearInterval(this.checkInterval); }
-        try { this.process?.kill("1"); } catch(e) {}
+        if (!this.process) { return; }
+        try { this.container?.kill(); } catch(e) { console.warn(e); }
     }
 }
 

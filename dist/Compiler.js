@@ -13,13 +13,22 @@ var __extends = (this && this.__extends) || (function () {
         return extendStatics(d, b);
     };
     return function (d, b) {
-        if (typeof b !== "function" && b !== null)
-            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
         extendStatics(d, b);
         function __() { this.constructor = d; }
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -60,21 +69,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-var event_emitter_es6_1 = __importDefault(require("event-emitter-es6"));
-var child_process_1 = require("child_process");
-var node_pty_1 = require("node-pty");
-var langList_json_1 = __importDefault(require("./langList.json"));
-var util_1 = require("util");
+var events_1 = require("events");
+var langList_1 = __importDefault(require("./langList"));
 var findFilesInDir_1 = __importDefault(require("./findFilesInDir"));
+var dockerode_1 = __importDefault(require("dockerode"));
+var node_pty_1 = require("node-pty");
+var Docker = new dockerode_1.default({ socketPath: '/var/run/docker.sock' });
 var Compiler = /** @class */ (function (_super) {
     __extends(Compiler, _super);
     /**
      * Creates a compiler instance.
      * @param {CompilerOptions} opts - Options object
      * @param {Number} opts.langNum - Index of Language to compile file in
-     * @param {String} opts.mainFile - File to execute on compilation
      * @param {String} opts.pathToFiles - Absolute path to location of files
-     * @param {String} opts.containerName	- Name of docker container
+     * @param {String} opts.containerName - Name of docker container & committed image on container exit.
+     * @param {String} opts.mainFile (OPTIONAL) - File to execute on compilation. If left blank, will initialise Interactive mode or Bash shell.
+     * @param {{ rows: number, cols: number }} opts.dimensions (OPTIONAL) - Pseudo-tty dimensions. If left blank, will use { rows: 200, cols: 80 }
      * @param {String} opts.folderName (OPTIONAL) - Name of folder where files are stored within the container. If left blank, "code" is used instead.
      */
     function Compiler(opts) {
@@ -82,165 +92,172 @@ var Compiler = /** @class */ (function (_super) {
         // Parameter checks
         if ((!opts.langNum && opts.langNum !== 0) || typeof opts.langNum !== "number")
             throw "Required param 'langNum' missing or invalid.";
-        if (!opts.mainFile || typeof opts.mainFile !== "string")
-            throw "Required param 'mainFile' missing or invalid.";
         if (!opts.pathToFiles || typeof opts.pathToFiles !== "string")
             throw "Required param 'pathToFiles' missing or invalid.";
         if (!opts.containerName || typeof opts.containerName !== "string")
             throw "Required param 'containerName' missing or invalid.";
+        opts.dimensions = opts.dimensions || { rows: 200, cols: 80 };
         _this.opts = opts;
         _this.folderName = opts.folderName || "code";
         return _this;
     }
     /**
-     * Compilation function
+     * Connect to docker container. This will check if there is an existing
+     * docker container with the same name running. If there is, it will attach to that running container.
+     * Otherwise, it will call this._createContainer()
      */
-    Compiler.prototype.exec = function () {
+    Compiler.prototype.connect = function () {
         return __awaiter(this, void 0, void 0, function () {
-            var runner, e_1, args, _, fileWithoutExt, toCompile, arrow, step1, step2, sentStep1, sentStep2, isLaunched, sentDone;
+            var container, alreadyStarted, err_1, e_1, cmd, ttyCmd;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        runner = langList_json_1.default[this.opts.langNum];
-                        child_process_1.exec("chmod -R 777 " + this.opts.pathToFiles + ";chown -R cc-user:cc-user /usercode");
+                        alreadyStarted = false;
                         _a.label = 1;
                     case 1:
-                        _a.trys.push([1, 3, , 4]);
-                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker rm -f " + this.opts.containerName + "; while docker container inspect myTask >/dev/null 2>&1; do sleep 0.1; done")];
+                        _a.trys.push([1, 3, , 8]);
+                        container = Docker.getContainer(this.opts.containerName);
+                        return [4 /*yield*/, container.inspect()];
                     case 2:
                         _a.sent();
-                        return [3 /*break*/, 4];
+                        alreadyStarted = true;
+                        return [3 /*break*/, 8];
                     case 3:
-                        e_1 = _a.sent();
-                        return [3 /*break*/, 4];
+                        err_1 = _a.sent();
+                        _a.label = 4;
                     case 4:
-                        args = ["run", "--name", this.opts.containerName, "-e", "TERM=xterm-256color", "--cpus=0.25", "--memory=200m",
-                            "-itv", this.opts.pathToFiles + ":/usercode/" + this.opts.folderName, "--workdir", "/usercode/" + this.opts.folderName, "cc-compiler", "/bin/bash", "-e"];
-                        // Creates a pseudo-tty shell (For colours, arrow keys and other basic terminal functionalities)
-                        this.process = node_pty_1.spawn("docker", args, { name: 'xterm-256color', cols: 32, rows: 200 });
-                        _ = this.opts.mainFile.split(".");
-                        _.pop();
-                        fileWithoutExt = _.join(".");
-                        toCompile = this.opts.langNum === 4 ? findFilesInDir_1.default(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile;
-                        arrow = "\u001b[1;3;31m>> \u001b[0m", step1 = runner[0] + " " + toCompile + "\r", step2 = runner[1] ? runner[1].replace("{}", fileWithoutExt) + "\r" : "", sentStep1 = false, sentStep2 = !step2;
-                        isLaunched = false, sentDone = false;
-                        // Handles terminal output and stdin
-                        this.process.onData(function (e) { return __awaiter(_this, void 0, void 0, function () {
-                            var e_2;
-                            var _this = this;
-                            var _a, _b, _c;
-                            return __generator(this, function (_d) {
-                                switch (_d.label) {
-                                    case 0:
-                                        if (!sentDone) {
-                                            this.emit("inc", { out: e });
-                                        }
-                                        if ((!sentStep2 || !sentStep1) && !e.includes(arrow)) {
-                                            (_a = this.process) === null || _a === void 0 ? void 0 : _a.write(String.fromCharCode(127).repeat(e.length));
-                                        }
-                                        if (!e.includes(arrow)) return [3 /*break*/, 4];
-                                        if (!sentStep1) {
-                                            sentStep1 = !0;
-                                            return [2 /*return*/, (_b = this.process) === null || _b === void 0 ? void 0 : _b.write(step1)];
-                                        }
-                                        _d.label = 1;
-                                    case 1:
-                                        _d.trys.push([1, 3, , 4]);
-                                        return [4 /*yield*/, util_1.promisify(child_process_1.exec)("docker top " + this.opts.containerName + " | grep '" + (sentStep2 && step2 ? step2.slice(0, -1) : step1.slice(0, -1)) + "'")];
-                                    case 2:
-                                        _d.sent();
-                                        return [3 /*break*/, 4];
-                                    case 3:
-                                        e_2 = _d.sent();
-                                        if (!sentStep2) {
-                                            sentStep2 = !0;
-                                            return [2 /*return*/, (_c = this.process) === null || _c === void 0 ? void 0 : _c.write(step2)];
-                                        }
-                                        if (sentDone) {
-                                            return [2 /*return*/];
-                                        }
-                                        this.emit("done", { out: "", timedOut: false });
-                                        sentDone = true;
-                                        this._cleanUp();
-                                        child_process_1.exec("docker kill " + this.opts.containerName);
-                                        return [2 /*return*/, setTimeout(function () { return child_process_1.exec("docker rm -f " + _this.opts.containerName); }, 500)];
-                                    case 4: return [2 /*return*/];
-                                }
-                            });
-                        }); });
-                        this.checkInterval = setInterval(function () {
-                            // Check if docker container is still running
-                            child_process_1.exec("docker ps | grep " + _this.opts.containerName, function (_, out) {
-                                // Checks if docker container has been launched. If so, emit launched event.
-                                if (out && !isLaunched) {
-                                    isLaunched = !0;
-                                    _this.emit("launched");
-                                    return;
-                                }
-                                // Timeout code execution after one minute.
-                                var timedOut = out.indexOf("minute") > -1;
-                                if (((!out && isLaunched) || timedOut) && !sentDone) {
-                                    _this.emit("done", { out: "", timedOut: timedOut });
-                                    sentDone = true;
-                                    _this._cleanUp();
-                                    child_process_1.exec("docker kill " + _this.opts.containerName);
-                                    return setTimeout(function () { return child_process_1.exec("docker rm -f " + _this.opts.containerName); }, 500);
-                                }
-                            });
-                        }, 500);
+                        _a.trys.push([4, 6, , 7]);
+                        return [4 /*yield*/, this._createContainer()];
+                    case 5:
+                        container = _a.sent();
+                        return [3 /*break*/, 7];
+                    case 6:
+                        e_1 = _a.sent();
+                        container = Docker.getContainer(this.opts.containerName);
+                        alreadyStarted = true;
+                        return [3 /*break*/, 7];
+                    case 7: return [3 /*break*/, 8];
+                    case 8:
+                        cmd = alreadyStarted ? "echo he; docker logs " + this.opts.containerName + "; docker attach " + this.opts.containerName : "echo no; docker attach $(docker start " + this.opts.containerName + ");";
+                        ttyCmd = ["-c", "" + cmd];
+                        this.container = container;
+                        this.process = node_pty_1.spawn("bash", ttyCmd, __assign({ name: 'xterm-256color' }, this.opts.dimensions));
+                        this.process.onData(function (e) {
+                            _this.emit("inc", e);
+                        });
+                        this.process.onExit(function (e) {
+                            _this.emit("inc", "\n\n[Process exited with code " + e.exitCode + "]");
+                            _this._onExit(container);
+                        });
                         return [2 /*return*/];
                 }
             });
         });
     };
     /**
-     * Handles STDIN to the running program.
-     * @param {string} text - Text to push to the program
+     * Runs when the docker container exits.
+     * @param {dockerode.Container} container
      */
-    Compiler.prototype.push = function (text) {
-        var _a;
-        try {
-            (_a = this.process) === null || _a === void 0 ? void 0 : _a.write(text);
-        }
-        catch (e) {
-            console.warn(e);
-        }
+    Compiler.prototype._onExit = function (container) {
+        return __awaiter(this, void 0, void 0, function () {
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, container.commit({ repo: "proj_" + this.opts.containerName })];
+                    case 1:
+                        _a.sent();
+                        return [4 /*yield*/, container.remove()];
+                    case 2:
+                        _a.sent();
+                        this.emit("done");
+                        return [2 /*return*/];
+                }
+            });
+        });
     };
-    // Stops compilation and kills the docker process
-    Compiler.prototype.stop = function () {
-        var _this = this;
-        var _a;
-        try {
-            (_a = this.process) === null || _a === void 0 ? void 0 : _a.kill("1");
-        }
-        catch (e) {
-            console.warn(e);
-        } // Kill processes
-        setTimeout(function () { return child_process_1.exec("docker rm -f " + _this.opts.containerName); }, 200); // Remove docker container
+    Compiler.prototype._createContainer = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var isInteractive, compiler, toCompile, Image, e_2, container;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        isInteractive = !this.opts.mainFile;
+                        compiler = !isInteractive ? langList_1.default.compilers[this.opts.langNum][0] : (langList_1.default.interactive[this.opts.langNum] || "/bin/bash");
+                        toCompile = this.opts.mainFile ? this.opts.langNum === 4 ? findFilesInDir_1.default(this.opts.pathToFiles, this.opts.pathToFiles, ".cpp").join(" ") : this.opts.mainFile : "";
+                        Image = "cc-compiler";
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 3, , 4]);
+                        return [4 /*yield*/, Docker.getImage("proj_" + this.opts.containerName).inspect()];
+                    case 2:
+                        _a.sent();
+                        Image = "proj_" + this.opts.containerName;
+                        return [3 /*break*/, 4];
+                    case 3:
+                        e_2 = _a.sent();
+                        return [3 /*break*/, 4];
+                    case 4: return [4 /*yield*/, Docker.createContainer({
+                            Image: Image,
+                            Tty: true,
+                            AttachStdin: true,
+                            AttachStdout: true,
+                            AttachStderr: true,
+                            name: this.opts.containerName,
+                            Cmd: isInteractive ? [compiler] : [compiler, toCompile],
+                            OpenStdin: true,
+                            StdinOnce: false,
+                            WorkingDir: "/home/cc-user/" + this.opts.folderName,
+                            HostConfig: {
+                                Binds: [this.opts.pathToFiles + ":/home/cc-user/" + this.opts.folderName]
+                            }
+                        })];
+                    case 5:
+                        container = _a.sent();
+                        return [2 /*return*/, container];
+                }
+            });
+        });
     };
-    // Resizes pseudo-tty
+    /**
+     * @deprecated
+     * Resizing the tty WILL cause terminal formatting glitches.
+     */
     Compiler.prototype.resize = function (_a) {
         var _b;
         var cols = _a.cols, rows = _a.rows;
         try {
             (_b = this.process) === null || _b === void 0 ? void 0 : _b.resize(cols, rows);
         }
+        catch (e) { }
+    };
+    /**
+     * Handles STDIN to the running program.
+     * @param {string} text - Text to push to the program
+     */
+    Compiler.prototype.push = function (text) {
+        if (!this.process) {
+            return;
+        }
+        try {
+            this.process.write(text);
+        }
         catch (e) {
             console.warn(e);
         }
     };
-    // Cleans up after compilation ends.
-    Compiler.prototype._cleanUp = function () {
+    // Kills the docker container
+    Compiler.prototype.stop = function () {
         var _a;
-        if (this.checkInterval) {
-            clearInterval(this.checkInterval);
+        if (!this.process) {
+            return;
         }
         try {
-            (_a = this.process) === null || _a === void 0 ? void 0 : _a.kill("1");
+            (_a = this.container) === null || _a === void 0 ? void 0 : _a.kill();
         }
-        catch (e) { }
+        catch (e) {
+            console.warn(e);
+        }
     };
     return Compiler;
-}(event_emitter_es6_1.default));
+}(events_1.EventEmitter));
 exports.default = Compiler;

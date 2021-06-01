@@ -116,17 +116,17 @@ RUN git clone git://github.com/Portatolova/stderred.git
 RUN mv /stderred /err
 RUN cd /err; make
 
-# Setup custom python compilers
-COPY tmp /tmp/
-RUN cd /tmp; make; mv /bin/python3.9 /bin/python3.9-bin; mv /bin/python2.7 /bin/python2.7-bin; mv /tmp/python3.9 /bin/python3.9; mv /tmp/python2.7 /bin/python2.7;
-
 # Set Locale to support Chinese/Japanese characters
 RUN apt-get install -y locales
 ENV LANG C.UTF-8  
 
+# Setup custom python compilers
+COPY tmp /tmp/
+RUN cd /tmp; make; mv /bin/python3.9 /bin/python3.9-bin; mv /bin/python2.7 /bin/python2.7-bin; mv /tmp/python3.9 /bin/python3.9; mv /tmp/python2.7 /bin/python2.7;
+
 # Create local user
 RUN useradd -ms /bin/bash cc-user
 USER cc-user
-RUN /bin/bash -c "echo \"PS1='\[\033[1;3;31m\]>> \[\033[0m\]'\" >> /home/cc-user/.bashrc "
+RUN /bin/bash -c "echo \"PS1='\[\033[0;36m\]\w \[\033[0m\]$ '\" >> /home/cc-user/.bashrc "
 WORKDIR /home/cc-user
 ENV LD_PRELOAD="/err/build/libstderred.so"

@@ -23,7 +23,7 @@ void setPS1() {
 }
 
 // Interactive mode.
-void runInteractive() {
+void runInteractive(wchar_t *program) {
     PyObject *sys, *hook, *result;
     sys = PyImport_ImportModule("sys");
 
@@ -42,11 +42,13 @@ void runInteractive() {
     if (result == NULL) { std::cerr << "Unable to initialise sys interactive hook."; return; }
     Py_DECREF(result);
 
-    // Show the Python startup version and platform
-    std::cout << "Python " << Py_GetVersion() << " on " << Py_GetPlatform() << "\n";
-
     setPS1();
     PyRun_InteractiveLoopFlags(stdin, "<stdin>", NULL);
+
+    if (Py_FinalizeEx() < 0) {
+        exit(120);
+    }
+    PyMem_RawFree(program);
 }
 
 int main(int argc, char *argv[]) {
@@ -64,7 +66,10 @@ int main(int argc, char *argv[]) {
     // Checks if a file was specified. Run interactive mode otherwise.
     if(argv[1] == NULL) {
 
-        runInteractive();
+        // Show the Python startup version and platform
+        //std::cout << "Python " << Py_GetVersion() << " on " << Py_GetPlatform() << "\n";
+
+        runInteractive(program);
         return 0;
     }
 
@@ -79,7 +84,7 @@ int main(int argc, char *argv[]) {
     
     // Run the file
     PyRun_AnyFile(fopen(argv[1], "r"), argv[1]);
-    
+
     if (Py_FinalizeEx() < 0) {
         exit(120);
     }
